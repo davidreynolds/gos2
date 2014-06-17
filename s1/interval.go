@@ -31,11 +31,34 @@ func IntervalFromEndpoints(lo, hi float64) Interval {
 	return i
 }
 
+func IntervalFromPointPair(p1, p2 float64) Interval {
+	if p1 == -math.Pi {
+		p1 = math.Pi
+	}
+	if p2 == -math.Pi {
+		p2 = math.Pi
+	}
+	if positiveDistance(p1, p2) <= math.Pi {
+		return Interval{p1, p2}
+	} else {
+		return Interval{p2, p1}
+	}
+}
+
 // EmptyInterval returns an empty interval.
 func EmptyInterval() Interval { return Interval{math.Pi, -math.Pi} }
 
 // FullInterval returns a full interval.
 func FullInterval() Interval { return Interval{-math.Pi, math.Pi} }
+
+func (i Interval) Bound(k int) float64 {
+	switch k {
+	case 0:
+		return i.Lo
+	default:
+		return i.Hi
+	}
+}
 
 // IsValid reports whether the interval is valid.
 func (i Interval) IsValid() bool {
@@ -49,6 +72,9 @@ func (i Interval) IsFull() bool { return i.Hi-i.Lo == 2*math.Pi }
 
 // IsEmpty reports whether the interval is empty.
 func (i Interval) IsEmpty() bool { return i.Lo-i.Hi == 2*math.Pi }
+
+// Equal makes sure two s1.Intervals are equal.
+func (i Interval) Equal(other Interval) bool { return i.Lo == other.Lo && i.Hi == other.Hi }
 
 // IsInverted reports whether the interval is inverted; that is, whether Lo > Hi.
 func (i Interval) IsInverted() bool { return i.Lo > i.Hi }

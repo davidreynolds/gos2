@@ -11,6 +11,7 @@ const (
 	emptyHeight = -1.0
 	zeroHeight  = 0.0
 	fullHeight  = 2.0
+	roundUp     = float64(1.0 + 1.0/(uint64(1)<<52))
 )
 
 var (
@@ -83,6 +84,21 @@ func FullCap() Cap {
 	return CapFromCenterHeight(centerPoint, fullHeight)
 }
 
+func (c *Cap) AddPoint(p Point) {
+	// Compute the squared chord length, then covert it into a height.
+	if c.IsEmpty() {
+		c.center = p
+		c.height = 0
+	} else {
+		// To make sure that the resulting cap actually includes this
+		// point, we need to round up the distance calculation. That
+		// is, after calling cap.AddPoint(p), cap.Contains(p) should be
+		// true.
+		dist2 := c.center.Sub(p.Vector).Norm2()
+		c.height = math.Max(c.height, roundUp*0.5*dist2)
+	}
+}
+
 // IsValid reports whether the Cap is considered valid.
 // Heights are normalized so that they do not exceed 2.
 func (c Cap) IsValid() bool {
@@ -116,6 +132,18 @@ func (c Cap) Area() float64 {
 	return 2.0 * math.Pi * math.Max(zeroHeight, c.height)
 }
 
+func (c Cap) MayIntersect(cell Cell) bool {
+	// If the cap contains any cell vertex, return true.
+	vertices := [4]Point{}
+	for k := 0; k < 4; k++ {
+		vertices[k] = cell.Vertex(k)
+		if c.ContainsPoint(vertices[k]) {
+			return true
+		}
+	}
+	return c.IntersectsCell(cell, vertices)
+}
+
 // Contains reports whether this cap contains the other.
 func (c Cap) Contains(other Cap) bool {
 	// In a set containment sense, every cap contains the empty cap.
@@ -123,6 +151,24 @@ func (c Cap) Contains(other Cap) bool {
 		return true
 	}
 	return c.Radius() >= c.center.Distance(other.center)+other.Radius()
+}
+
+func (c Cap) ContainsCell(cell Cell) bool {
+	// If the cap does not contain all cell vertices, return false.
+	// We check the vertices before taking the Complement because we can't
+	// accurately represent the complement of a very small cap (a height
+	// of 2-epsilon is rounded off to 2).
+	vertices := [4]Point{}
+	for k := 0; k < 4; k++ {
+		vertices[k] = cell.Vertex(k)
+		if !c.ContainsPoint(vertices[k]) {
+			return false
+		}
+	}
+	// Otherwise, return true if the complement of the cap does not
+	// intersect the cell. (This test is slightly conservative, because
+	// technically we want Complement().InteriorIntersects() here.)
+	return !c.Complement().IntersectsCell(cell, vertices)
 }
 
 // Intersects reports whether this cap intersects the other cap.
@@ -133,6 +179,64 @@ func (c Cap) Intersects(other Cap) bool {
 	}
 
 	return c.Radius()+other.Radius() >= c.center.Distance(other.center)
+}
+
+func (c Cap) IntersectsCell(cell Cell, vertices [4]Point) bool {
+	// Return true if this cap intersects any point of 'cell' excluding
+	// its vertices (which are assumed to already have been checked).
+
+	// If the cap is a hemisphere or larger, the cell and the complement
+	// of the cap are both convex. Therefore since no vertex of the cell
+	// is contained, no other interior point of the cell is contained
+	// either.
+	if c.height >= 1 {
+		return false
+	}
+
+	// We need to check for empty caps due to the axis check just below.
+	if c.IsEmpty() {
+		return false
+	}
+
+	// Optimization: return true if the cell contains the cap axis.
+	// (This allows half of the edge checks below to be skipped.)
+	if cell.ContainsPoint(c.center) {
+		return true
+	}
+
+	// At this point we know that the cell does not contain the cap axis,
+	// and the cap does not contain any cell vertex. The only way that
+	// they can intersect is if the cap intersects the interior of some
+	// edge.
+
+	sin2_angle := c.height * (2 - c.height) // sin^2(cap_angle)
+	for k := 0; k < 4; k++ {
+		edge := cell.EdgeRaw(k)
+		dot := c.center.Dot(edge.Vector)
+		if dot > 0 {
+			// The axis is in the interior half-space defined by
+			// the edge. We don't need to consider these edges,
+			// since if the cap intersects this edge then it also
+			// intersects the edge on the opposite side of the cell
+			// (because we know the axis is not contained with the
+			// cell).
+			continue
+		}
+		// The Norm2() factor is necessary because "edge" is not
+		// normalized.
+		if dot*dot > sin2_angle*edge.Norm2() {
+			// Entire cap is on the exterior side of this edge.
+			return false
+		}
+		// Otherwise, the great circle containing this edge intersects
+		// the interior of the cap. We just need to check whether the
+		// point of closest approach occurs between two edge endpoints.
+		dir := edge.Cross(c.center.Vector)
+		if dir.Dot(vertices[k].Vector) < 0 && dir.Dot(vertices[(k+1)&3].Vector) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // InteriorIntersects reports whether this caps interior intersects the other cap.

@@ -1,6 +1,7 @@
 package r3
 
 import (
+	"github.com/davidreynolds/exactfloat"
 	"math"
 	"testing"
 )
@@ -193,6 +194,13 @@ func TestMul(t *testing.T) {
 		if !test.v.Mul(test.m).ApproxEqual(test.want) {
 			t.Errorf("%v%v = %v, want %v", test.m, test.v, test.v.Mul(test.m), test.want)
 		}
+
+		vxf := Vector3_xf_FromVector(test.v)
+		wxf := Vector3_xf_FromVector(test.want)
+		mxf := exactfloat.NewExactFloat(test.m)
+		if !vxf.Mul(mxf).ApproxEqual(wxf) {
+			t.Errorf("%v%v = %v, want %v", mxf, vxf, vxf.Mul(mxf), wxf)
+		}
 	}
 }
 
@@ -270,6 +278,25 @@ func TestIdentities(t *testing.T) {
 		}
 		if !float64Eq(test.v2.Dot(c1), 0.0) {
 			t.Errorf("%v · (%v ⨯ %v) = %v != 0", test.v2, test.v1, test.v2, test.v2.Dot(c1))
+		}
+	}
+}
+
+func TestLessThan(t *testing.T) {
+	tests := []struct {
+		v1, v2 Vector
+		want   bool
+	}{
+		{Vector{-1, 0, 0}, Vector{0, 0, 0}, true},
+		{Vector{0, 0, 0}, Vector{-1, 0, 0}, false},
+		{Vector{0, -1, 0}, Vector{0, 0, 0}, true},
+		{Vector{0, 0, 0}, Vector{0, -1, 0}, false},
+		{Vector{0, 0, -1}, Vector{0, 0, 0}, true},
+		{Vector{0, 0, 0}, Vector{0, 0, -1}, false},
+	}
+	for _, test := range tests {
+		if test.v1.LessThan(test.v2) != test.want {
+			t.Errorf("%v < %v != %b", test.v1, test.v2, test.want)
 		}
 	}
 }

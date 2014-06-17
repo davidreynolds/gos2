@@ -18,6 +18,23 @@ func EmptyInterval() Interval { return Interval{1, 0} }
 // IntervalFromPoint returns an interval representing a single point.
 func IntervalFromPoint(p float64) Interval { return Interval{p, p} }
 
+func IntervalFromPointPair(p1, p2 float64) Interval {
+	if p1 <= p2 {
+		return Interval{p1, p2}
+	} else {
+		return Interval{p2, p1}
+	}
+}
+
+func (i Interval) Bound(k int) float64 {
+	switch k {
+	case 0:
+		return i.Lo
+	default:
+		return i.Hi
+	}
+}
+
 // IsEmpty reports whether the interval is empty.
 func (i Interval) IsEmpty() bool { return i.Lo > i.Hi }
 

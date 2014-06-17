@@ -18,6 +18,28 @@ func (v Vector) ApproxEqual(ov Vector) bool {
 	return math.Abs(v.X-ov.X) < epsilon && math.Abs(v.Y-ov.Y) < epsilon && math.Abs(v.Z-ov.Z) < epsilon
 }
 
+func (v Vector) LessThan(ov Vector) bool {
+	if v.X < ov.X {
+		return true
+	}
+	if ov.X < v.X {
+		return false
+	}
+	if v.Y < ov.Y {
+		return true
+	}
+	if ov.Y < v.Y {
+		return false
+	}
+	if v.Z < ov.Z {
+		return true
+	}
+	return false
+}
+
+func (v Vector) GreaterThan(ov Vector) bool { return ov.LessThan(v) }
+func (v Vector) GTE(ov Vector) bool         { return !v.LessThan(ov) }
+
 func (v Vector) String() string { return fmt.Sprintf("(%v, %v, %v)", v.X, v.Y, v.Z) }
 
 // Norm returns the vector's norm.
@@ -42,6 +64,9 @@ func (v Vector) IsUnit() bool {
 
 // Abs returns the vector with nonnegative components.
 func (v Vector) Abs() Vector { return Vector{math.Abs(v.X), math.Abs(v.Y), math.Abs(v.Z)} }
+
+// Neg returns the vector with opposite components.
+func (v Vector) Neg() Vector { return Vector{-v.X, -v.Y, -v.Z} }
 
 // Add returns the standard vector sum of v and ov.
 func (v Vector) Add(ov Vector) Vector { return Vector{v.X + ov.X, v.Y + ov.Y, v.Z + ov.Z} }

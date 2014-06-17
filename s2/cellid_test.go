@@ -1,6 +1,7 @@
 package s2
 
 import (
+	"sort"
 	"testing"
 
 	"code.google.com/p/gos2/r2"
@@ -110,6 +111,72 @@ func TestContainment(t *testing.T) {
 	// TODO(dsymonds): Test Contains, Intersects better, such as with adjacent cells.
 }
 
+func TestContainment2(t *testing.T) {
+	parentMap := map[CellID]CellID{}
+	cells := []CellID{}
+	for face := 0; face < 6; face++ {
+		expandCell(t, CellIDFromFacePosLevel(face, 0, 0), &cells, parentMap)
+	}
+	for i := 0; i < len(cells); i++ {
+		for j := 0; j < len(cells); j++ {
+			contained := true
+			for id := cells[j]; id != cells[i]; id = parentMap[id] {
+				if _, ok := parentMap[id]; !ok {
+					contained = false
+					break
+				}
+			}
+			if got := cells[i].Contains(cells[j]); got != contained {
+				t.Fatalf("%v.Contains(%v) == %v, want %v", cells[i], cells[j], got, contained)
+			}
+			if got := cells[j] >= cells[i].RangeMin() && cells[j] <= cells[i].RangeMax(); got != contained {
+				t.Fatalf("want %v, got %v", contained, got)
+			}
+			if cells[i].Intersects(cells[j]) != (cells[i].Contains(cells[j]) || cells[j].Contains(cells[i])) {
+				t.Fatalf("%v.Intersects(%v) != (%v.Contains(%v) || %v.Contains(%v))",
+					cells[i], cells[j], cells[i], cells[j], cells[j], cells[i])
+			}
+		}
+	}
+}
+
+const maxExpandLevel = 3
+
+func expandCell(t *testing.T, parent CellID, cells *[]CellID, parentMap map[CellID]CellID) {
+	*cells = append(*cells, parent)
+	if parent.Level() == maxExpandLevel {
+		return
+	}
+	face, _, _, orientation := parent.faceIJOrientation()
+	if face != parent.Face() {
+		t.Errorf("%v != %v", face, parent.Face())
+	}
+
+	child := parent.ChildBegin()
+	for pos := 0; child != parent.ChildEnd(); pos, child = pos+1, child.Next() {
+		if parent.Child(pos) != child {
+			t.Errorf("%v.child(%v) != %v", parent, pos, child)
+		}
+		if child.Level() != parent.Level()+1 {
+			t.Errorf("%v.Level() != %v.Level+1", child, parent)
+		}
+		if child.IsLeaf() {
+			t.Errorf("%v.IsLeaf()", child)
+		}
+		childFace, _, _, childOrientation := child.faceIJOrientation()
+		if childFace != face {
+			t.Errorf("faces don't match: %v != %v", childFace, face)
+		}
+		if childOrientation != orientation^posToOrientation[pos] {
+			t.Errorf("orientations are wrong: %v, %v", childOrientation,
+				orientation^posToOrientation[pos])
+		}
+
+		parentMap[child] = parent
+		expandCell(t, child, cells, parentMap)
+	}
+}
+
 func TestCellIDString(t *testing.T) {
 	ci := CellID(0xbb04000000000000)
 	if s, exp := ci.String(), "5/31200"; s != exp {
@@ -181,6 +248,108 @@ func TestEdgeNeighbors(t *testing.T) {
 			if nbr != want[i] {
 				t.Errorf("CellID(%d).EdgeNeighbors()[%d] = %v, want %v", id, i, nbr, want[i])
 			}
+		}
+	}
+}
+
+func TestAppendVertexNeighbors(t *testing.T) {
+	var want CellID
+	nbrs := []CellID{}
+
+	// Check the vertex neighbors of the center of face 2 at level 5
+	cellIDFromPoint(PointFromCoords(0, 0, 1)).AppendVertexNeighbors(5, &nbrs)
+	sort.Sort(byID(nbrs))
+	for i := 0; i < 4; i++ {
+		ioff := 0
+		joff := 0
+		if i < 2 {
+			ioff = 1
+		}
+		if i == 0 || i == 3 {
+			joff = 1
+		}
+
+		want = cellIDFromFaceIJ(2, (1<<29)-ioff, (1<<29)-joff).Parent(5)
+		if nbrs[i] != want {
+			t.Errorf("%v != %v", nbrs[i], want)
+		}
+	}
+
+	nbrs = []CellID{}
+
+	// Check the vertex neighbors of the corner of faces 0, 4, and 5.
+	id := CellIDFromFacePosLevel(0, 0, MaxCellLevel)
+	id.AppendVertexNeighbors(0, &nbrs)
+	sort.Sort(byID(nbrs))
+	if len(nbrs) != 3 {
+		t.Errorf("len(%v) == %d, want 3", nbrs, len(nbrs))
+	}
+
+	tests := []struct {
+		want CellID
+	}{
+		{CellIDFromFacePosLevel(0, 0, 0)},
+		{CellIDFromFacePosLevel(4, 0, 0)},
+		{CellIDFromFacePosLevel(5, 0, 0)},
+	}
+
+	for i, test := range tests {
+		if nbrs[i] != test.want {
+			t.Errorf("got %v, want %v", nbrs[i], want)
+		}
+	}
+}
+
+func removeDuplicates(a []CellID) []CellID {
+	res := []CellID{}
+	seen := map[CellID]bool{}
+	for _, c := range a {
+		if _, ok := seen[c]; !ok {
+			res = append(res, c)
+			seen[c] = true
+		}
+	}
+	return res
+}
+
+func TestAllNeighbors(t *testing.T) {
+	for i := 0; i < 1000; i++ {
+		id := randomCellID()
+		if id.IsLeaf() {
+			id = id.immediateParent()
+		}
+		maxDiff := min(6, maxLevel-id.Level()-1)
+		level := id.Level() + uniform(maxDiff)
+
+		var all, expected []CellID
+		id.AppendAllNeighbors(level, &all)
+		end := id.ChildEndAtLevel(level + 1)
+		for c := id.ChildBeginAtLevel(level + 1); c != end; c = c.Next() {
+			all = append(all, c.immediateParent())
+			c.AppendVertexNeighbors(level, &expected)
+		}
+		all = removeDuplicates(all)
+		expected = removeDuplicates(expected)
+		sort.Sort(byID(all))
+		sort.Sort(byID(expected))
+		if len(all) != len(expected) {
+			t.Errorf("len(%v) != len(%v)", all, expected)
+		}
+		for i := 0; i < len(all); i++ {
+			if all[i] != expected[i] {
+				t.Fatalf("%v != %v", all[i], expected[i])
+			}
+		}
+	}
+}
+
+func TestCoverage(t *testing.T) {
+	maxDist := 0.5 * MaxDiag.Value(maxLevel)
+	for i := 0; i < 1000000; i++ {
+		p := randomPoint()
+		q := Point{cellIDFromPoint(p).rawPoint()}
+		if p.Distance(q).Radians() > maxDist {
+			t.Errorf("%v.Distance(%v) > %v", p, q, maxDist)
 		}
 	}
 }

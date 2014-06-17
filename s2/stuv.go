@@ -81,6 +81,21 @@ func validFaceXYZToUV(face int, r r3.Vector) (float64, float64) {
 	return -r.Y / r.Z, -r.X / r.Z
 }
 
+func faceXYZToUV(face int, p Point, u, v *float64) bool {
+	coords := [3]float64{p.X, p.Y, p.Z}
+	if face < 3 {
+		if coords[face] <= 0 {
+			return false
+		}
+	} else {
+		if coords[face-3] >= 0 {
+			return false
+		}
+	}
+	*u, *v = validFaceXYZToUV(face, p.Vector)
+	return true
+}
+
 // xyzToFaceUV converts a direction vector (not necessarily unit length) to
 // (face, u, v) coordinates.
 func xyzToFaceUV(r r3.Vector) (f int, u, v float64) {
@@ -105,6 +120,10 @@ func faceUVToXYZ(face int, u, v float64) r3.Vector {
 	default:
 		return r3.Vector{v, u, -1}
 	}
+}
+
+func faceNorm(face int) r3.Vector {
+	return faceUVToXYZ(face, 0, 0)
 }
 
 // uNorm returns the right-handed normal (not necessarily unit length) for an
@@ -145,5 +164,39 @@ func vNorm(face int, v float64) r3.Vector {
 		return r3.Vector{1, v, 0}
 	default:
 		return r3.Vector{1, 0, v}
+	}
+}
+
+func uAxis(face int) r3.Vector {
+	switch face {
+	case 0:
+		return r3.Vector{0, 1, 0}
+	case 1:
+		return r3.Vector{-1, 0, 0}
+	case 2:
+		return r3.Vector{-1, 0, 0}
+	case 3:
+		return r3.Vector{0, 0, -1}
+	case 4:
+		return r3.Vector{0, 0, -1}
+	default:
+		return r3.Vector{0, 1, 0}
+	}
+}
+
+func vAxis(face int) r3.Vector {
+	switch face {
+	case 0:
+		return r3.Vector{0, 0, 1}
+	case 1:
+		return r3.Vector{0, 0, 1}
+	case 2:
+		return r3.Vector{0, -1, 0}
+	case 3:
+		return r3.Vector{0, -1, 0}
+	case 4:
+		return r3.Vector{1, 0, 0}
+	default:
+		return r3.Vector{1, 0, 0}
 	}
 }

@@ -17,6 +17,10 @@ func LatLngFromDegrees(lat, lng float64) LatLng {
 	return LatLng{s1.Angle(lat) * s1.Degree, s1.Angle(lng) * s1.Degree}
 }
 
+func LatLngFromRadians(lat_radians, lng_radians float64) LatLng {
+	return LatLng{s1.Angle(lat_radians), s1.Angle(lng_radians)}
+}
+
 // IsValid returns true iff the LatLng is normalized, with Lat ∈ [-π/2,π/2] and Lng ∈ [-π,π].
 func (ll LatLng) IsValid() bool {
 	return math.Abs(ll.Lat.Radians()) <= math.Pi/2 && math.Abs(ll.Lng.Radians()) <= math.Pi

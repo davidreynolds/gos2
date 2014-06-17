@@ -22,11 +22,13 @@ type CellID uint64
 
 // TODO(dsymonds): Some of these constants should probably be exported.
 const (
-	faceBits = 3
-	numFaces = 6
-	maxLevel = 30
-	posBits  = 2*maxLevel + 1
-	maxSize  = 1 << maxLevel
+	faceBits     = 3
+	numFaces     = 6
+	maxLevel     = 30
+	posBits      = 2*maxLevel + 1
+	maxSize      = 1 << maxLevel
+	wrapOffset   = numFaces << posBits
+	MaxCellLevel = maxLevel // export
 )
 
 // CellIDFromFacePosLevel returns a cell given its face in the range
@@ -36,6 +38,14 @@ const (
 // the center of the returned cell.
 func CellIDFromFacePosLevel(face int, pos uint64, level int) CellID {
 	return CellID(uint64(face)<<posBits + pos | 1).Parent(level)
+}
+
+func CellIDBegin(level int) CellID {
+	return CellIDFromFacePosLevel(0, 0, 0).ChildBeginAtLevel(level)
+}
+
+func CellIDEnd(level int) CellID {
+	return CellIDFromFacePosLevel(5, 0, 0).ChildEndAtLevel(level)
 }
 
 // CellIDFromFace returns the cell corresponding to a given S2 cube face.
@@ -62,6 +72,29 @@ func CellIDFromToken(s string) CellID {
 		n = n << (4 * uint(16-len(s)))
 	}
 	return CellID(n)
+}
+
+func Sentinel() CellID {
+	return CellID(^uint64(0))
+}
+
+func (ci CellID) Advance(steps int64) CellID {
+	if steps == 0 {
+		return ci
+	}
+	stepShift := uint64(2*(maxLevel-ci.Level()) + 1)
+	if steps < 0 {
+		minSteps := -int64(uint64(ci) >> stepShift)
+		if steps < minSteps {
+			steps = minSteps
+		}
+	} else {
+		maxSteps := (wrapOffset + ci.lsb() - uint64(ci)) >> stepShift
+		if uint64(steps) > maxSteps {
+			steps = int64(maxSteps)
+		}
+	}
+	return CellID(uint64(ci) + (uint64(steps) << stepShift))
 }
 
 // ToToken returns a hex-encoded string of the uint64 cell id, with leading
@@ -143,6 +176,11 @@ func (ci CellID) immediateParent() CellID {
 	return (ci & -nlsb) | nlsb
 }
 
+func (ci CellID) Child(pos int) CellID {
+	lsb := ci.lsb() >> 2
+	return CellID(uint64(ci) + uint64(2*pos+1-4)*lsb)
+}
+
 // isFace returns whether this is a top-level (face) cell.
 func (ci CellID) isFace() bool { return uint64(ci)&(lsbForLevel(0)-1) == 0 }
 
@@ -178,6 +216,73 @@ func (ci CellID) EdgeNeighbors() [4]CellID {
 		cellIDFromFaceIJWrap(f, i+size, j).Parent(level),
 		cellIDFromFaceIJWrap(f, i, j+size).Parent(level),
 		cellIDFromFaceIJWrap(f, i-size, j).Parent(level),
+	}
+}
+
+func (ci CellID) AppendVertexNeighbors(level int, out *[]CellID) {
+	var isame, jsame bool
+	var ioff, joff int
+	// level must be strictly less than this cell's level so that we can
+	// determine which vertex this cell is closest to.
+	if level >= ci.Level() {
+		return
+	}
+	face, i, j, _ := ci.faceIJOrientation()
+	halfsize := sizeIJ(level + 1)
+	size := halfsize << 1
+	if i&halfsize != 0 {
+		ioff = size
+		isame = (i + size) < maxSize
+	} else {
+		ioff = -size
+		isame = (i - size) >= 0
+	}
+	if j&halfsize != 0 {
+		joff = size
+		jsame = (j + size) < maxSize
+	} else {
+		joff = -size
+		jsame = (j - size) >= 0
+	}
+	*out = append(*out, ci.Parent(level))
+	*out = append(*out, cellIDFromFaceIJSame(face, i+ioff, j, isame).Parent(level))
+	*out = append(*out, cellIDFromFaceIJSame(face, i, j+joff, jsame).Parent(level))
+	// If i- and j- edge neighbors are *both* on a different face, then this
+	// vertex only has three neighors (it is on of the 8 cube vertices)
+	if isame || jsame {
+		*out = append(*out, cellIDFromFaceIJSame(face, i+ioff, j+joff, isame && jsame).Parent(level))
+	}
+}
+
+func (ci CellID) AppendAllNeighbors(nbrLevel int, out *[]CellID) {
+	face, i, j, _ := ci.faceIJOrientation()
+	size := sizeIJ(ci.Level())
+	i &= -size
+	j &= -size
+	nbrSize := sizeIJ(nbrLevel)
+
+	for k := -nbrSize; ; k += nbrSize {
+		var sameFace bool
+		if k < 0 {
+			sameFace = (j+k >= 0)
+		} else if k >= size {
+			sameFace = (j+k < maxSize)
+		} else {
+			sameFace = true
+			// North and South neighbors.
+			*out = append(*out, cellIDFromFaceIJSame(face, i+k, j-nbrSize,
+				j-size >= 0).Parent(nbrLevel))
+			*out = append(*out, cellIDFromFaceIJSame(face, i+k, j+size,
+				j+size < maxSize).Parent(nbrLevel))
+		}
+		// East, West, and Diagonal neighbors.
+		*out = append(*out, cellIDFromFaceIJSame(face, i-nbrSize, j+k,
+			sameFace && i-size >= 0).Parent(nbrLevel))
+		*out = append(*out, cellIDFromFaceIJSame(face, i+size, j+k,
+			sameFace && i+size < maxSize).Parent(nbrLevel))
+		if k >= size {
+			break
+		}
 	}
 }
 
@@ -262,7 +367,6 @@ func (ci CellID) Next() CellID {
 func (ci CellID) rawPoint() r3.Vector {
 	face, si, ti := ci.faceSiTi()
 	return faceUVToXYZ(face, stToUV((0.5/maxSize)*float64(si)), stToUV((0.5/maxSize)*float64(ti)))
-
 }
 
 // faceSiTi returns the Face/Si/Ti coordinates of the center of the cell.
@@ -277,6 +381,13 @@ func (ci CellID) faceSiTi() (face, si, ti int) {
 		}
 	}
 	return face, 2*i + delta, 2*j + delta
+}
+
+func (ci CellID) centerUV() (u, v float64) {
+	_, si, ti := ci.faceSiTi()
+	u = (0.5 / maxSize) * float64(si)
+	v = (0.5 / maxSize) * float64(ti)
+	return
 }
 
 // faceIJOrientation uses the global lookupIJ table to unfiddle the bits of ci.
@@ -357,6 +468,14 @@ func cellIDFromFaceIJWrap(f, i, j int) CellID {
 	return cellIDFromFaceIJ(f, stToIJ(0.5*(u+1)), stToIJ(0.5*(v+1)))
 }
 
+func cellIDFromFaceIJSame(f, i, j int, same_face bool) CellID {
+	if same_face {
+		return cellIDFromFaceIJ(f, i, j)
+	} else {
+		return cellIDFromFaceIJWrap(f, i, j)
+	}
+}
+
 // clamp returns number closest to x within the range min..max.
 func clamp(x, min, max int) int {
 	if x < min {
@@ -388,6 +507,8 @@ func cellIDFromPoint(p Point) CellID {
 	j := stToIJ(uvToST(v))
 	return cellIDFromFaceIJ(f, i, j)
 }
+
+func CellIDFromPoint(p Point) CellID { return cellIDFromPoint(p) }
 
 // ijLevelToBoundUV returns the bounds in (u,v)-space for the cell at the given
 // level containing the leaf cell with the given (i,j)-coordinates.
