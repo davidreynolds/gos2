@@ -1,8 +1,6 @@
 package s2
 
-import (
-	"container/heap"
-)
+import "container/heap"
 
 const (
 	// By default, the covering uses at most 8 cells at any level. This

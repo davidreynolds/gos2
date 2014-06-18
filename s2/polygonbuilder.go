@@ -303,7 +303,7 @@ type MergeMap map[Point]Point
 func (b *PolygonBuilder) BuildMergeMap(index *PointIndex) MergeMap {
 	// First, we build the set of all the distinct vertices in the input.
 	// We need to include the source and destination of every edge.
-	vertices := map[Point]bool{}
+	vertices := make(map[Point]bool)
 	merge_map := MergeMap{}
 
 	for v0, vset := range b.edges {
@@ -476,8 +476,8 @@ func (b *PolygonBuilder) EraseLoop(loop *Loop) {
 }
 
 func (b *PolygonBuilder) AssembleLoop(v0, v1 Point, unused_edges *[]Edge) *Loop {
-	path := []Point{}        // The path so far.
-	index := map[Point]int{} // Maps a vertex to its index in "path"
+	path := []Point{}            // The path so far.
+	index := make(map[Point]int) // Maps a vertex to its index in "path"
 	path = append(path, v0)
 	path = append(path, v1)
 	index[v1] = 1
