@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"math"
 
-	"code.google.com/p/gos2/r1"
-	"code.google.com/p/gos2/s1"
+	"github.com/davidreynolds/gos2/r1"
+	"github.com/davidreynolds/gos2/s1"
 )
 
 // Rect represents a closed latitude-longitude rectangle.

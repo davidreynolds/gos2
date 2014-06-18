@@ -1,7 +1,7 @@
 package s2
 
 import (
-	"code.google.com/p/gos2/r3"
+	"github.com/davidreynolds/gos2/r3"
 	"math"
 	"testing"
 )

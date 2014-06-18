@@ -1,7 +1,7 @@
 package s2
 
 import (
-	"code.google.com/p/gos2/s1"
+	"github.com/davidreynolds/gos2/s1"
 	"log"
 	"math"
 )

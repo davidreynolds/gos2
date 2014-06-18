@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	"code.google.com/p/gos2/r1"
+	"github.com/davidreynolds/gos2/r1"
 )
 
 var (

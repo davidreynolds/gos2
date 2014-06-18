@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"strings"
 
-	"code.google.com/p/gos2/r1"
-	"code.google.com/p/gos2/r2"
-	"code.google.com/p/gos2/r3"
+	"github.com/davidreynolds/gos2/r1"
+	"github.com/davidreynolds/gos2/r2"
+	"github.com/davidreynolds/gos2/r3"
 )
 
 // CellID uniquely identifies a cell in the S2 cell decomposition.

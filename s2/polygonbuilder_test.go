@@ -1,8 +1,8 @@
 package s2
 
 import (
-	"code.google.com/p/gos2/r3"
-	"code.google.com/p/gos2/s1"
+	"github.com/davidreynolds/gos2/r3"
+	"github.com/davidreynolds/gos2/s1"
 	"fmt"
 	"math"
 	"math/rand"

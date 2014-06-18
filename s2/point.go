@@ -3,8 +3,8 @@ package s2
 import (
 	"math"
 
-	"code.google.com/p/gos2/r3"
-	"code.google.com/p/gos2/s1"
+	"github.com/davidreynolds/gos2/r3"
+	"github.com/davidreynolds/gos2/s1"
 )
 
 // Point represents a point on the unit sphere as a normalized 3D vector.

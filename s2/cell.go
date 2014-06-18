@@ -3,9 +3,9 @@ package s2
 import (
 	"math"
 
-	"code.google.com/p/gos2/r1"
-	"code.google.com/p/gos2/r2"
-	"code.google.com/p/gos2/s1"
+	"github.com/davidreynolds/gos2/r1"
+	"github.com/davidreynolds/gos2/r2"
+	"github.com/davidreynolds/gos2/s1"
 )
 
 const (

@@ -4,7 +4,7 @@ import (
 	"log"
 	"sort"
 
-	"code.google.com/p/gos2/s1"
+	"github.com/davidreynolds/gos2/s1"
 )
 
 type LoopMap map[*Loop][]*Loop
