@@ -50,7 +50,7 @@ type RegionCoverer struct {
 func NewRegionCoverer() RegionCoverer {
 	r := RegionCoverer{
 		minLevel: 0,
-		maxLevel: MaxCellLevel,
+		maxLevel: maxLevel,
 		levelMod: 1,
 		maxCells: defaultMaxCells,
 		result:   []CellID{},
@@ -62,8 +62,8 @@ func NewRegionCoverer() RegionCoverer {
 
 // Returns the log base 2 of the maximum number of children of a candidate.
 func (r RegionCoverer) maxChildrenShift() int  { return 2 * r.levelMod }
-func (r *RegionCoverer) SetMinLevel(level int) { r.minLevel = max(0, min(MaxCellLevel, level)) }
-func (r *RegionCoverer) SetMaxLevel(level int) { r.maxLevel = max(0, min(MaxCellLevel, level)) }
+func (r *RegionCoverer) SetMinLevel(level int) { r.minLevel = max(0, min(maxLevel, level)) }
+func (r *RegionCoverer) SetMaxLevel(level int) { r.maxLevel = max(0, min(maxLevel, level)) }
 func (r *RegionCoverer) SetLevelMod(mod int)   { r.levelMod = max(1, min(3, mod)) }
 func (r *RegionCoverer) SetMaxCells(cells int) { r.maxCells = cells }
 

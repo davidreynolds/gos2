@@ -35,9 +35,6 @@ func (p Polygon) Loop(k int) *Loop { return p.loops[k] }
 
 func (p *Polygon) Init(loops *[]*Loop) {
 	p.loops = make([]*Loop, len(*loops))
-	if !AreLoopsValid(*loops) {
-		log.Println("invalid loops")
-	}
 	copy(p.loops, *loops)
 	for _, loop := range p.loops {
 		p.numVertices += len(loop.vertices)
@@ -51,17 +48,6 @@ func (p *Polygon) Init(loops *[]*Loop) {
 	// Reorder the loops in depth-first order.
 	p.loops = []*Loop{}
 	p.InitLoop(nil, -1, loopMap)
-
-	for i := 0; i < len(p.loops); i++ {
-		for j := 0; j < len(p.loops); j++ {
-			if i == j {
-				continue
-			}
-			if ContainsChild(p.loops[i], p.loops[j], loopMap) != p.loops[i].ContainsNested(p.loops[j]) {
-				log.Println("FAILED EQ TEST")
-			}
-		}
-	}
 
 	p.hasHoles = false
 	p.bound = EmptyRect()
@@ -93,6 +79,19 @@ func NewPolygonFromLoop(loop *Loop) *Polygon {
 		hasHoles:    false,
 		numVertices: len(loop.vertices),
 	}
+	p.loops = append(p.loops, loop)
+	return p
+}
+
+func NewPolygonFromCell(cell Cell) *Polygon {
+	p := &Polygon{
+		loops:       []*Loop{},
+		bound:       EmptyRect(),
+		ownsLoops:   true,
+		numVertices: 4,
+	}
+	loop := NewLoopFromCell(cell)
+	p.bound = loop.Bound()
 	p.loops = append(p.loops, loop)
 	return p
 }
@@ -306,9 +305,6 @@ func (p *Polygon) InsertLoop(newLoop, parent *Loop, loopMap LoopMap) {
 		child := loopMap[parent][i]
 		if newLoop.ContainsNested(child) {
 			loopMap[newLoop] = append(loopMap[newLoop], child)
-			//			copy(loopMap[parent][i:], loopMap[parent][i+1:])
-			//			loopMap[parent][len(loopMap[parent])-1] = nil
-			//			loopMap[parent] = loopMap[parent][:len(loopMap[parent])-1]
 			loopMap[parent] = append(loopMap[parent][:i], loopMap[parent][i+1:]...)
 		} else {
 			i++
@@ -382,7 +378,7 @@ func (p *Polygon) IsNormalized() bool {
 		}
 		parent := p.Loop(p.Parent(i))
 		if parent != lastParent {
-			vertices := map[Point]bool{}
+			vertices = map[Point]bool{}
 			for j := 0; j < parent.NumVertices(); j++ {
 				vertices[*parent.vertex(j)] = true
 			}
@@ -412,6 +408,9 @@ func (p *Polygon) InitToIntersectionSloppy(a, b *Polygon, vertexMergeRadius s1.A
 		return
 	}
 
+	// We want the boundary of A clipped to the interior of B,
+	// plus the boundary of B clipped to the interior of A,
+	// plus one copy of any directed edges that are in both boundaries.
 	options := DIRECTED_XOR()
 	options.vertex_merge_radius = vertexMergeRadius
 	builder := NewPolygonBuilder(options)
@@ -422,16 +421,224 @@ func (p *Polygon) InitToIntersectionSloppy(a, b *Polygon, vertexMergeRadius s1.A
 	}
 }
 
+func (p *Polygon) InitToUnion(a, b *Polygon) {
+	p.InitToUnionSloppy(a, b, intersectionTolerance)
+}
+
+func (p *Polygon) InitToUnionSloppy(a, b *Polygon, vertexMergeRadius s1.Angle) {
+	// We want the boundary of A clipped to the exterior of B,
+	// plus the boundary of B clipped to the exterior of A,
+	// plus one copy of any directed edges that are in both boundaries.
+	options := DIRECTED_XOR()
+	options.vertex_merge_radius = vertexMergeRadius
+	builder := NewPolygonBuilder(options)
+	ClipBoundary(a, false, b, false, true, true, &builder)
+	ClipBoundary(b, false, a, false, true, false, &builder)
+	if !builder.AssemblePolygon(p, nil) {
+		log.Fatalf("Bad directed edges in InitToUnion")
+	}
+}
+
+func (p *Polygon) InitToDifference(a, b *Polygon) {
+	p.InitToDifferenceSloppy(a, b, intersectionTolerance)
+}
+
+func (p *Polygon) InitToDifferenceSloppy(a, b *Polygon, vertexMergeRadius s1.Angle) {
+	// We want the boundary of A clipped to the exterior of B,
+	// plus the reversed boundary of B clipped to the interior of A,
+	// plus one copy of any edge in A that is also a reverse edge in B.
+	options := DIRECTED_XOR()
+	options.vertex_merge_radius = vertexMergeRadius
+	builder := NewPolygonBuilder(options)
+	ClipBoundary(a, false, b, true, true, true, &builder)
+	ClipBoundary(b, true, a, false, false, false, &builder)
+	if !builder.AssemblePolygon(p, nil) {
+		log.Fatalf("Bad directed edges in InitToDifference")
+	}
+}
+
+func (p *Polygon) InternalClipPolyline(invert bool, a *Polyline, out *[]*Polyline, mergeRadius s1.Angle) {
+	// Clip the polyline A to the interior of this polygon.
+	// The resulting polyline(s) will be appended to "out".
+	// If invert is true, we clip A to the exterior of this polygon
+	// instead. Vertices will be dropped such that adjacent vertices
+	// will not be closer than "mergeRadius".
+	//
+	// We do the intersection/subtraction by walking the polyline edges.
+	// For each edge, we compute all intersections with the polygon
+	// boundary and sort them in increasing order of distance along that
+	// edge. We then divide the intersection points into pairs, and
+	// output a clipped polyline segment for each one.
+	// We keep track of whether we're inside or outside of the polygon
+	// at all times to decide which segments to output.
+	var intersections IntersectionSet
+	var vertices []Point
+	index := NewPolygonIndex(p, false)
+	n := a.NumVertices()
+	inside := p.ContainsPoint(a.Vertex(0)) != invert
+	for j := 0; j < n-1; j++ {
+		a0 := a.Vertex(j)
+		a1 := a.Vertex(j + 1)
+		ClipEdge(a0, a1, &index, true, &intersections)
+		if inside {
+			intersections = append(intersections, FloatPointPair{0, a0})
+		}
+		inside = (len(intersections) & 1) != 0
+		if inside {
+			intersections = append(intersections, FloatPointPair{1, a1})
+		}
+		sort.Sort(intersections)
+		// At this point we have a sorted array of vertex pairs
+		// representing the edge(s) obtained after clipping (a0,a1)
+		// against the polygon.
+		for k := 0; k < len(intersections); k += 2 {
+			if intersections[k] == intersections[k+1] {
+				continue
+			}
+			v0 := intersections[k].second
+			v1 := intersections[k+1].second
+
+			// If the gap from the previous vertex to this one is
+			// large enough, start a new polyline.
+			if len(vertices) > 0 && vertices[len(vertices)-1].Angle(v0.Vector).Radians() > mergeRadius.Radians() {
+				*out = append(*out, PolylineFromPoints(vertices))
+				vertices = []Point{}
+			}
+			// Append this segment to the current polyline,
+			// ignoring any vertices that are too close to the
+			// previous vertex.
+			if len(vertices) == 0 {
+				vertices = append(vertices, v0)
+			}
+			if vertices[len(vertices)-1].Angle(v1.Vector).Radians() > mergeRadius.Radians() {
+				vertices = append(vertices, v1)
+			}
+		}
+		intersections = IntersectionSet{}
+	}
+	if len(vertices) > 0 {
+		*out = append(*out, PolylineFromPoints(vertices))
+	}
+}
+
+func (p *Polygon) IntersectWithPolyline(a *Polyline, out *[]*Polyline) {
+	p.IntersectWithPolylineSloppy(a, out, intersectionTolerance)
+}
+
+func (p *Polygon) IntersectWithPolylineSloppy(a *Polyline, out *[]*Polyline, vertexMergeRadius s1.Angle) {
+	p.InternalClipPolyline(false, a, out, vertexMergeRadius)
+}
+
+func (p *Polygon) SubtractFromPolyline(a *Polyline, out *[]*Polyline) {
+	p.SubtractFromPolylineSloppy(a, out, intersectionTolerance)
+}
+
+func (p *Polygon) SubtractFromPolylineSloppy(a *Polyline, out *[]*Polyline, mergeRadius s1.Angle) {
+	p.InternalClipPolyline(true, a, out, mergeRadius)
+}
+
+func DestructiveUnion(polygons *[]*Polygon) *Polygon {
+	return DestructiveUnionSloppy(polygons, intersectionTolerance)
+}
+
+func DestructiveUnionSloppy(polygons *[]*Polygon, vertexMergeRadius s1.Angle) *Polygon {
+	// Effectively create a priority queue of polygons in order of number
+	// of vertices. Repeatedly union the two smallest polygons and add
+	// the result to the queue until we have a single polygon to return.
+	var queue IntPolygonQueue
+	for i := 0; i < len(*polygons); i++ {
+		queue.Insert(IntPolygonPair{(*polygons)[i].numVertices, (*polygons)[i]})
+	}
+	*polygons = []*Polygon{}
+	for queue.Len() > 1 {
+		// Pop two simplest polygons from queue.
+		a := queue.PopFront()
+		b := queue.PopFront()
+		// Union and add result back to queue.
+		var cUnion Polygon
+		cUnion.InitToUnionSloppy(a.poly, b.poly, vertexMergeRadius)
+		queue.Insert(IntPolygonPair{a.size + b.size, &cUnion})
+	}
+	if queue.Len() == 0 {
+		return &Polygon{}
+	}
+	return queue.PopFront().poly
+}
+
+type IntPolygonPair struct {
+	size int
+	poly *Polygon
+}
+
+type IntPolygonQueue []IntPolygonPair
+
+func (p IntPolygonQueue) Len() int           { return len(p) }
+func (p IntPolygonQueue) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
+func (p IntPolygonQueue) Less(i, j int) bool { return p[i].size < p[j].size }
+
+func (p *IntPolygonQueue) Insert(pair IntPolygonPair) {
+	*p = append(*p, pair)
+	sort.Sort(p)
+}
+
+func (p *IntPolygonQueue) PopFront() IntPolygonPair {
+	front := (*p)[0]
+	*p = (*p)[1:]
+	return front
+}
+
+func (a *Polygon) BoundaryApproxEquals(b *Polygon, maxError float64) bool {
+	if a.NumLoops() != b.NumLoops() {
+		return false
+	}
+	for i := 0; i < a.NumLoops(); i++ {
+		aLoop := a.Loop(i)
+		success := false
+		for j := 0; j < a.NumLoops(); j++ {
+			bLoop := b.Loop(j)
+			if bLoop.Depth() == aLoop.Depth() && bLoop.BoundaryApproxEquals(aLoop, maxError) {
+				success = true
+				break
+			}
+		}
+		if !success {
+			return false
+		}
+	}
+	return true
+}
+
+func (a *Polygon) BoundaryNear(b *Polygon, maxError float64) bool {
+	if a.NumLoops() != b.NumLoops() {
+		return false
+	}
+	for i := 0; i < a.NumLoops(); i++ {
+		aLoop := a.Loop(i)
+		success := false
+		for j := 0; j < a.NumLoops(); j++ {
+			bLoop := b.Loop(j)
+			if bLoop.Depth() == aLoop.Depth() && bLoop.BoundaryNear(aLoop, maxError) {
+				success = true
+				break
+			}
+		}
+		if !success {
+			return false
+		}
+	}
+	return true
+}
+
 type FloatPointPair struct {
 	first  float64
 	second Point
 }
 
-type byFloatPointPair []FloatPointPair
+type IntersectionSet []FloatPointPair
 
-func (x byFloatPointPair) Len() int      { return len(x) }
-func (x byFloatPointPair) Swap(i, j int) { x[i], x[j] = x[j], x[i] }
-func (x byFloatPointPair) Less(i, j int) bool {
+func (x IntersectionSet) Len() int      { return len(x) }
+func (x IntersectionSet) Swap(i, j int) { x[i], x[j] = x[j], x[i] }
+func (x IntersectionSet) Less(i, j int) bool {
 	if x[i].first < x[j].first {
 		return true
 	}
@@ -444,18 +651,29 @@ func (x byFloatPointPair) Less(i, j int) bool {
 	return false
 }
 
-func AddIntersection(a0, a1, b0, b1 Point, add_shared_edges bool, crossing int,
-	intersections *[]FloatPointPair) {
+func AddIntersection(a0, a1, b0, b1 Point, add_shared_edges bool, crossing int, intersections *IntersectionSet) {
 	if crossing > 0 {
 		// There is a proper edge crossing.
 		x := GetIntersection(a0, a1, b0, b1)
 		t := GetDistanceFraction(x, a0, a1)
 		*intersections = append(*intersections, FloatPointPair{t, x})
+	} else if VertexCrossing(a0, a1, b0, b1) {
+		t := 1.0
+		if a0 == b0 || a0 == b1 {
+			t = 0.0
+		}
+		if !add_shared_edges && a1 == b1 {
+			t = 1.0
+		}
+		pair := FloatPointPair{t, a0}
+		if t != 0 {
+			pair = FloatPointPair{t, a1}
+		}
+		*intersections = append(*intersections, pair)
 	}
 }
 
-func ClipEdge(a0, a1 Point, bIndex *PolygonIndex, add_shared_edges bool,
-	intersections *[]FloatPointPair) {
+func ClipEdge(a0, a1 Point, bIndex *PolygonIndex, add_shared_edges bool, intersections *IntersectionSet) {
 	it := NewEdgeIndexIterator(bIndex)
 	it.GetCandidates(a0, a1)
 	crosser := NewEdgeCrosser(&a0, &a1, &a0)
@@ -474,34 +692,33 @@ func ClipEdge(a0, a1 Point, bIndex *PolygonIndex, add_shared_edges bool,
 	}
 }
 
-func ClipBoundary(a *Polygon, reverse_a bool,
-	b *Polygon, reverse_b bool,
-	invert_b, add_shared_edges bool,
-	builder *PolygonBuilder) {
+func ClipBoundary(a *Polygon, reverse_a bool, b *Polygon, reverse_b bool, invert_b, add_shared_edges bool, builder *PolygonBuilder) {
 	bIndex := NewPolygonIndex(b, reverse_b)
-
-	intersections := []FloatPointPair{}
-	for _, la := range a.loops {
-		n := la.NumVertices()
+	PredictAdditionalCalls(&bIndex, a.numVertices)
+	for _, aLoop := range a.loops {
+		n := aLoop.NumVertices()
 		dir := 1
-		if la.IsHole() != reverse_a {
+		if aLoop.IsHole() != reverse_a {
 			dir = -1
 		}
-		inside := b.ContainsPoint(*la.vertex(0)) != invert_b
+		inside := b.ContainsPoint(*aLoop.vertex(0)) != invert_b
 		j := n
 		if dir > 0 {
 			j = 0
 		}
 		for ; n > 0; n, j = n-1, j+dir {
-			a0 := *la.vertex(j)
-			a1 := *la.vertex(j + dir)
-			intersections = []FloatPointPair{}
+			a0 := *aLoop.vertex(j)
+			a1 := *aLoop.vertex(j + dir)
+			var intersections IntersectionSet
 			ClipEdge(a0, a1, &bIndex, add_shared_edges, &intersections)
 			if inside {
 				intersections = append(intersections, FloatPointPair{0, a0})
 			}
 			inside = (len(intersections) & 1) != 0
-			sort.Sort(byFloatPointPair(intersections))
+			if inside {
+				intersections = append(intersections, FloatPointPair{1, a1})
+			}
+			sort.Sort(intersections)
 			for k := 0; k < len(intersections); k += 2 {
 				if intersections[k] == intersections[k+1] {
 					continue

@@ -43,13 +43,13 @@ func (m Metric) ClosestLevel(value float64) int {
 // level.
 func (m Metric) MinLevel(value float64) int {
 	if value <= 0 {
-		return MaxCellLevel
+		return maxLevel
 	}
 	// This code is equivalent to computing a floating-point "level"
 	// value and rounding up. Frexp() returns a fraction in the range
 	// [0.5, 1) and the corresponding exponent.
 	_, level := math.Frexp(value / m.Deriv)
-	level = max(0, min(MaxCellLevel, -((level-1)>>uint(m.dim-1))))
+	level = max(0, min(maxLevel, -((level-1)>>uint(m.dim-1))))
 	return level
 }
 
@@ -57,10 +57,10 @@ func (m Metric) MinLevel(value float64) int {
 // or zero if there is no such level. The return value is always a valid level.
 func (m Metric) MaxLevel(value float64) int {
 	if value <= 0 {
-		return MaxCellLevel
+		return maxLevel
 	}
 	_, level := math.Frexp(m.Deriv / value)
-	level = max(0, min(MaxCellLevel, (level-1)>>uint(m.dim-1)))
+	level = max(0, min(maxLevel, (level-1)>>uint(m.dim-1)))
 	return level
 }
 

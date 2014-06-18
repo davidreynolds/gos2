@@ -25,7 +25,7 @@ func parsePoints(s string) (vertices []Point) {
 }
 
 func makepoint(s string) Point {
-	s = strings.Trim(s, " ")
+	s = strings.TrimSpace(s)
 	degs := strings.Split(s, ":")
 	lat, _ := strconv.ParseFloat(degs[0], 64)
 	lng, _ := strconv.ParseFloat(degs[1], 64)

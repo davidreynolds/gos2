@@ -278,7 +278,7 @@ func TestAppendVertexNeighbors(t *testing.T) {
 	nbrs = []CellID{}
 
 	// Check the vertex neighbors of the corner of faces 0, 4, and 5.
-	id := CellIDFromFacePosLevel(0, 0, MaxCellLevel)
+	id := CellIDFromFacePosLevel(0, 0, maxLevel)
 	id.AppendVertexNeighbors(0, &nbrs)
 	sort.Sort(byID(nbrs))
 	if len(nbrs) != 3 {

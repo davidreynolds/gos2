@@ -1,9 +1,10 @@
 package s2
 
 import (
-	"github.com/davidreynolds/gos2/s1"
 	"log"
 	"math"
+
+	"github.com/davidreynolds/gos2/s1"
 )
 
 const (
@@ -353,9 +354,45 @@ func EdgeInterpolateAtDistance(ax s1.Angle, a, b Point, ab s1.Angle) Point {
 }
 
 func GetIntersection(a0, a1, b0, b1 Point) Point {
-	return Point{}
+	aNorm := Point{a0.PointCross(a1).Normalize()}
+	bNorm := Point{b0.PointCross(b1).Normalize()}
+	x := Point{aNorm.PointCross(bNorm).Normalize()}
+	if x.Dot(a0.Add(a1.Vector).Add(b0.Add(b1.Vector))) < 0 {
+		x = Point{x.Mul(-1)}
+	}
+	if OrderedCCW(a0, x, a1, aNorm) && OrderedCCW(b0, x, b1, bNorm) {
+		return x
+	}
+
+	dmin2 := 10.0
+	vmin := x
+	if OrderedCCW(b0, a0, b1, bNorm) {
+		replaceIfCloser(x, a0, &dmin2, &vmin)
+	}
+	if OrderedCCW(b0, a1, b1, bNorm) {
+		replaceIfCloser(x, a1, &dmin2, &vmin)
+	}
+	if OrderedCCW(a0, b0, a1, aNorm) {
+		replaceIfCloser(x, b0, &dmin2, &vmin)
+	}
+	if OrderedCCW(a0, b1, a1, aNorm) {
+		replaceIfCloser(x, b1, &dmin2, &vmin)
+	}
+	return vmin
+}
+
+func replaceIfCloser(x, y Point, dmin2 *float64, vmin *Point) {
+	// If the squared distance from x to y is less than dmin2, then replace
+	// vmin by y and update dmin2 accordingly.
+	d2 := x.Sub(y.Vector).Norm2()
+	if d2 < *dmin2 || (d2 == *dmin2 && y.LessThan((*vmin).Vector)) {
+		*dmin2 = d2
+		*vmin = y
+	}
 }
 
 func GetDistanceFraction(x, a0, a1 Point) float64 {
-	return 0
+	d0 := x.Angle(a0.Vector).Radians()
+	d1 := x.Angle(a1.Vector).Radians()
+	return d0 / (d0 + d1)
 }

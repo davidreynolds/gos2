@@ -39,12 +39,12 @@ func skewed(maxLog int32) int32 {
 
 func randomCellIDForLevel(level int) CellID {
 	face := rand.Intn(numFaces)
-	pos := uint64(rand.Int63() & ((1 << (2 * MaxCellLevel)) - 1))
+	pos := uint64(rand.Int63() & ((1 << (2 * maxLevel)) - 1))
 	return CellIDFromFacePosLevel(face, pos, level)
 }
 
 func randomCellID() CellID {
-	return randomCellIDForLevel(uniform(MaxCellLevel + 1))
+	return randomCellIDForLevel(uniform(maxLevel + 1))
 }
 
 func randomPoint() Point {
@@ -145,8 +145,8 @@ func TestRandomCaps(t *testing.T) {
 	coverer := NewRegionCoverer()
 	for i := 0; i < 1000; i++ {
 		for {
-			coverer.SetMinLevel(rand.Intn(MaxCellLevel + 1))
-			coverer.SetMaxLevel(rand.Intn(MaxCellLevel + 1))
+			coverer.SetMinLevel(rand.Intn(maxLevel + 1))
+			coverer.SetMaxLevel(rand.Intn(maxLevel + 1))
 			if coverer.minLevel <= coverer.maxLevel {
 				break
 			}
@@ -155,7 +155,7 @@ func TestRandomCaps(t *testing.T) {
 		coverer.SetMaxCells(int(skewed(10)))
 		coverer.SetLevelMod(1 + rand.Intn(3))
 		max_area := math.Min(4*math.Pi, float64(3*coverer.maxCells+1)*AverageArea(coverer.minLevel))
-		s2cap := randomCap(0.1*AverageArea(MaxCellLevel), max_area)
+		s2cap := randomCap(0.1*AverageArea(maxLevel), max_area)
 		covering := coverer.Covering(s2cap)
 		CheckCovering(t, coverer, s2cap, covering, false)
 		// Check that Covering is deterministic
@@ -186,11 +186,11 @@ func TestSimpleCoverings(t *testing.T) {
 	coverer := NewRegionCoverer()
 	coverer.SetMaxCells(math.MaxInt32)
 	for i := 0; i < 1000; i++ {
-		level := uniform(MaxCellLevel + 1)
+		level := uniform(maxLevel + 1)
 		coverer.SetMinLevel(level)
 		coverer.SetMaxLevel(level)
 		max_area := math.Min(4*math.Pi, 1000*AverageArea(level))
-		s2cap := randomCap(0.1*AverageArea(MaxCellLevel), max_area)
+		s2cap := randomCap(0.1*AverageArea(maxLevel), max_area)
 		covering := SimpleCovering(s2cap, s2cap.center, level)
 		CheckCovering(t, coverer, s2cap, covering, false)
 	}

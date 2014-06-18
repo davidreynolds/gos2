@@ -98,7 +98,7 @@ func (cu CellUnion) Denormalize(minLevel, levelMod int) []CellID {
 		newLevel := max(minLevel, level)
 		if levelMod > 1 {
 			// Round up so that (newLevel - minLevel) is a multiple
-			// of levelMod. (Note that MaxCellLevel is a multiple
+			// of levelMod. (Note that maxLevel is a multiple
 			// of 1, 2, and 3.)
 			newLevel += (maxLevel - (newLevel - minLevel)) % levelMod
 			newLevel = min(maxLevel, newLevel)

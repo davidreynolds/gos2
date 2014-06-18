@@ -83,13 +83,13 @@ func NewEdgeIndex() EdgeIndex {
 	return EdgeIndex{
 		indexComputed: false,
 		queryCount:    0,
-		minLevelUsed:  MaxCellLevel,
+		minLevelUsed:  maxLevel,
 		mapping:       NewCellEdgeMultimap(),
 	}
 }
 
 func (idx *EdgeIndex) Reset() {
-	idx.SetMinLevelUsed(MaxCellLevel)
+	idx.SetMinLevelUsed(maxLevel)
 	idx.SetIndexComputed(false)
 	idx.SetQueryCount(0)
 	idx.mapping = NewCellEdgeMultimap()
@@ -264,7 +264,7 @@ func GetCovering(idx EdgeIndexer, a, b Point, thicken_edge bool) ([]CellID, int)
 	if !thicken_edge {
 		containing_cell = containingCell2(a, b)
 	} else {
-		if ideal_level == MaxCellLevel {
+		if ideal_level == maxLevel {
 			// If the edge is tiny, instabilities are more likely,
 			// so we want to limit the number of operations.
 			// We pretend we are in a cell much larger so as to
@@ -301,7 +301,7 @@ func GetCovering(idx EdgeIndexer, a, b Point, thicken_edge bool) ([]CellID, int)
 	// the cap by four big-enough cells around the cell vertex closest to
 	// the cap center.
 	middle := Point{a.Add(b.Vector).Mul(0.5).Normalize()}
-	actual_level := min(ideal_level, MaxCellLevel-1)
+	actual_level := min(ideal_level, maxLevel-1)
 	cellIDFromPoint(middle).AppendVertexNeighbors(actual_level, &covering)
 	return covering, actual_level
 }

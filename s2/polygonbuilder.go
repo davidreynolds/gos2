@@ -19,6 +19,11 @@ type PolygonBuilderOptions struct {
 	edge_splice_fraction float64
 }
 
+func (op *PolygonBuilderOptions) SetUndirectedEdges(b bool)           { op.undirected_edges = b }
+func (op *PolygonBuilderOptions) SetXorEdges(b bool)                  { op.xor_edges = b }
+func (op *PolygonBuilderOptions) SetValidate(b bool)                  { op.validate = b }
+func (op *PolygonBuilderOptions) SetVertexMergeRadius(angle s1.Angle) { op.vertex_merge_radius = angle }
+
 // These are the options that should be used for assembling well-behaved
 // input data into polygons. All edges should be directed such that
 // "shells" and "holes" have opposite orientations (typically CCW shells and
@@ -85,7 +90,7 @@ func NewPointIndex(vertex_radius, edge_fraction float64) PointIndex {
 	idx := PointIndex{
 		vertex_radius: vertex_radius,
 		edge_fraction: edge_fraction,
-		level:         min(max_level, MaxCellLevel-1),
+		level:         min(max_level, maxLevel-1),
 	}
 	idx.map_ = []CellIDPoint{CellIDPoint{Sentinel(), Point{}}}
 	return idx
@@ -240,7 +245,6 @@ func (b *PolygonBuilder) AddEdge(v0, v1 Point) bool {
 		b.EraseEdge(v1, v0)
 		return false
 	}
-
 	if _, ok := b.edges[v0]; !ok {
 		b.edges[v0] = NewVertexSet()
 		b.starting_vertices = append(b.starting_vertices, v0)
@@ -389,7 +393,6 @@ func (b *PolygonBuilder) SpliceEdges(index *PointIndex) {
 	// We keep a stack of unprocessed edges. Initially all edges are
 	// pushed onto the stack.
 	edges := []Edge{}
-
 	for v0, vset := range b.edges {
 		for _, v1 := range vset.vertices {
 			if !b.options.undirected_edges || v0.LessThan(v1.Vector) {
@@ -427,49 +430,8 @@ func (b *PolygonBuilder) SpliceEdges(index *PointIndex) {
 	}
 }
 
-func (b *PolygonBuilder) AssembleLoops(loops *[]*Loop, unused_edges *[]Edge) bool {
-	if b.options.vertex_merge_radius.Radians() > 0 {
-		index := NewPointIndex(b.options.vertex_merge_radius.Radians(),
-			b.options.edge_splice_fraction)
-		mergemap := b.BuildMergeMap(&index)
-		b.MoveVertices(mergemap)
-		if b.options.edge_splice_fraction > 0 {
-			b.SpliceEdges(&index)
-		}
-	}
-
-	var dummy_unused_edges []Edge
-	if unused_edges == nil {
-		unused_edges = &dummy_unused_edges
-	}
-	*unused_edges = []Edge{}
-
-	// We repeatedly choose an edge and attempt to assemble a loop
-	// starting from that edge. (This is always possible unless the
-	// input includes extra edges that are not part of any loop.) To
-	// maintain a consistent scanning order over b.edges between
-	// different machine architectures (e.g. 'clovertown' vs 'opteron'),
-	// we follow the order they were added to the builder.
-
-	for i := 0; i < len(b.starting_vertices); {
-		v0 := b.starting_vertices[i]
-		if candidates, ok := b.edges[v0]; ok {
-			v1 := candidates.vertices[0]
-			loop := b.AssembleLoop(v0, v1, unused_edges)
-			if loop != nil {
-				*loops = append(*loops, loop)
-				b.EraseLoop(loop)
-			}
-		} else {
-			i++
-		}
-	}
-	return len(*unused_edges) == 0
-}
-
 func (b *PolygonBuilder) EraseLoop(loop *Loop) {
 	n := len(loop.vertices)
-
 	for i, j := n-1, 0; j < n; i, j = j, j+1 {
 		b.EraseEdge(loop.vertices[i], loop.vertices[j])
 	}
@@ -483,8 +445,8 @@ func (b *PolygonBuilder) AssembleLoop(v0, v1 Point, unused_edges *[]Edge) *Loop 
 	index[v1] = 1
 
 	for len(path) >= 2 {
-		v0 = path[len(path)-2]
-		v1 = path[len(path)-1]
+		v0 := path[len(path)-2]
+		v1 := path[len(path)-1]
 		var v2 Point
 		v2_found := false
 
@@ -531,6 +493,46 @@ func (b *PolygonBuilder) AssembleLoop(v0, v1 Point, unused_edges *[]Edge) *Loop 
 		}
 	}
 	return nil
+}
+
+func (b *PolygonBuilder) AssembleLoops(loops *[]*Loop, unused_edges *[]Edge) bool {
+	if b.options.vertex_merge_radius.Radians() > 0 {
+		index := NewPointIndex(b.options.vertex_merge_radius.Radians(),
+			b.options.edge_splice_fraction)
+		mergemap := b.BuildMergeMap(&index)
+		b.MoveVertices(mergemap)
+		if b.options.edge_splice_fraction > 0 {
+			b.SpliceEdges(&index)
+		}
+	}
+
+	var dummy_unused_edges []Edge
+	if unused_edges == nil {
+		unused_edges = &dummy_unused_edges
+	}
+	*unused_edges = []Edge{}
+
+	// We repeatedly choose an edge and attempt to assemble a loop
+	// starting from that edge. (This is always possible unless the
+	// input includes extra edges that are not part of any loop.) To
+	// maintain a consistent scanning order over b.edges between
+	// different machine architectures (e.g. 'clovertown' vs 'opteron'),
+	// we follow the order they were added to the builder.
+
+	for i := 0; i < len(b.starting_vertices); {
+		v0 := b.starting_vertices[i]
+		if candidates, ok := b.edges[v0]; ok {
+			v1 := candidates.vertices[0]
+			loop := b.AssembleLoop(v0, v1, unused_edges)
+			if loop != nil {
+				*loops = append(*loops, loop)
+				b.EraseLoop(loop)
+			}
+		} else {
+			i++
+		}
+	}
+	return len(*unused_edges) == 0
 }
 
 func (b *PolygonBuilder) AssemblePolygon(polygon *Polygon, unusedEdges *[]Edge) bool {

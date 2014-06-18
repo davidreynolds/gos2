@@ -137,6 +137,8 @@ func (l Loop) IsValid() bool {
 	return !crosses
 }
 
+func (l Loop) Depth() int { return l.depth }
+
 func (l Loop) IsHole() bool { return (l.depth & 1) != 0 }
 func (l Loop) Sign() int {
 	if l.IsHole() {
@@ -384,7 +386,8 @@ func (l *Loop) InitBound() {
 	l.bound = b
 }
 
-func (l Loop) NumVertices() int { return len(l.vertices) }
+func (l Loop) NumVertices() int    { return len(l.vertices) }
+func (l Loop) Vertex(i int) *Point { return l.vertex(i) }
 
 func (l Loop) vertex(i int) *Point {
 	j := i - l.NumVertices()
@@ -525,6 +528,8 @@ func (a Loop) ContainsNested(b *Loop) bool {
 	return WedgeContains(*a.vertex(m - 1), *a.vertex(m), *a.vertex(m + 1),
 		*b.vertex(0), *b.vertex(2))
 }
+
+func (l Loop) ContainsPoint(p Point) bool { return l.Contains(p) }
 
 func (l Loop) Contains(p Point) bool {
 	if !l.bound.Contains(LatLngFromPoint(p)) {

@@ -1,12 +1,13 @@
 package s2
 
 import (
-	"github.com/davidreynolds/gos2/r3"
-	"github.com/davidreynolds/gos2/s1"
 	"fmt"
 	"math"
 	"math/rand"
 	"testing"
+
+	"github.com/davidreynolds/gos2/r3"
+	"github.com/davidreynolds/gos2/s1"
 )
 
 func TestAddEdge(t *testing.T) {

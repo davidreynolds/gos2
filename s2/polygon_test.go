@@ -1,10 +1,13 @@
 package s2
 
 import (
+	"fmt"
 	"log"
 	"math/rand"
 	"strings"
 	"testing"
+
+	"github.com/davidreynolds/gos2/s1"
 )
 
 func makepolygon(s string) *Polygon {
@@ -207,7 +210,15 @@ func TestRelations(t *testing.T) {
 			log.Printf("%v.Intersect(%v) == %v, want %v", test.a, test.b, got, test.intersects)
 			t.Errorf("%v.Intersects(%v) == %v, want %v", test.a, test.b, got, test.intersects)
 		}
-		// TODO: check contains and disjoint relations
+
+		if test.contains > 0 {
+			checkContains2(t, test.a, test.b)
+		} else if test.contains < 0 {
+			checkContains2(t, test.b, test.a)
+		}
+		if !test.intersects {
+			checkDisjoint(t, test.a, test.b)
+		}
 	}
 }
 
@@ -236,8 +247,7 @@ func SplitAndAssemble(t *testing.T, polygon *Polygon) {
 	builder.AddPolygon(polygon)
 	var expected Polygon
 	if !builder.AssemblePolygon(&expected, nil) {
-		// TODO: use Fatalf()
-		t.Errorf("%v.AssemblePolygon() failed", builder)
+		t.Fatalf("%v.AssemblePolygon() failed", builder)
 	}
 	for iter := 0; iter < 10; iter++ {
 		coverer := NewRegionCoverer()
@@ -252,21 +262,32 @@ func SplitAndAssemble(t *testing.T, polygon *Polygon) {
 		var covering CellUnion
 		covering.Init(cells)
 		CheckCompleteCovering(t, *polygon, covering, false, CellID(0))
-	}
-}
+		var pieces []*Polygon
+		for i := 0; i < len(cells); i++ {
+			cell := CellFromCellID(cells[i])
+			window := NewPolygonFromCell(cell)
+			var piece Polygon
+			piece.InitToIntersection(polygon, window)
+			pieces = append(pieces, &piece)
+			log.Printf("\nPiece %d:\n  Window: %s\n  Piece: %s\n",
+				i, polygonToString(window), polygonToString(&piece))
+		}
 
-func CheckContains(t *testing.T, astr, bstr string) {
-	a := makepolygon(astr)
-	b := makepolygon(bstr)
-	if !a.ContainsPolygon(b) {
-		t.Errorf("!%v.Contains(%v)", a, b)
-	}
-}
-
-func CheckContainsPoint(t *testing.T, astr, bstr string) {
-	a := makepolygon(astr)
-	if !a.ContainsPoint(makepoint(bstr)) {
-		t.Errorf("%v.ContainsPoint(%v) == false", a, makepoint(bstr))
+		for len(pieces) > 1 {
+			a := choosePiece(&pieces)
+			b := choosePiece(&pieces)
+			var c Polygon
+			c.InitToUnion(a, b)
+			pieces = append(pieces, &c)
+			log.Printf("\nJoining piece a: %s\n  With piece b: %s\n  To get piece c: %s\n",
+				polygonToString(a), polygonToString(b), polygonToString(&c))
+		}
+		result := pieces[0]
+		pieces = pieces[:len(pieces)-1]
+		if got := expected.BoundaryNear(result, 1e-15); !got {
+			t.Errorf("\nActual:\n%s\nExpected:\n%s\n",
+				polygonToString(result), polygonToString(&expected))
+		}
 	}
 }
 
@@ -299,14 +320,322 @@ func TestPolygonInit(t *testing.T) {
 	CheckContainsPoint(t, kSouthHemi, kSouthPoint)
 }
 
+type testCase struct {
+	a         string
+	b         string
+	a_and_b   string
+	a_or_b    string
+	a_minus_b string
+}
+
+var testCases = []testCase{
+	// Two triangles that share an edge.
+	{
+		"4:2, 3:1, 3:3;",
+		"3:1, 2:2, 3:3;",
+		"",
+		"4:2, 3:1, 2:2, 3:3;",
+		"4:2, 3:1, 3:3;",
+	},
+
+	// Two vertical bars and a horizontal bar connecting them.
+	{
+		"0:0, 0:2, 3:2, 3:0;   0:3, 0:5, 3:5, 3:3;",
+		"1:1, 1:4, 2:4, 2:1;",
+		"1:1, 1:2, 2:2, 2:1;   1:3, 1:4, 2:4, 2:3;",
+		"0:0, 0:2, 1:2, 1:3, 0:3, 0:5, 3:5, 3:3, 2:3, 2:2, 3:2, 3:0;",
+		"0:0, 0:2, 1:2, 1:1, 2:1, 2:2, 3:2, 3:0; 0:3, 0:5, 3:5, 3:3, 2:3, 2:4, 1:4, 1:3;",
+	},
+
+	// Two vertical bars and two horizontal bars centered around S2::Origin().
+	{
+		"1:88, 1:93, 2:93, 2:88;   -1:88, -1:93, 0:93, 0:88;",
+		"-2:89, -2:90, 3:90, 3:89;   -2:91, -2:92, 3:92, 3:91;",
+		"1:89, 1:90, 2:90, 2:89;   1:91, 1:92, 2:92, 2:91; -1:89, -1:90, 0:90, 0:89;   -1:91, -1:92, 0:92, 0:91;",
+		"-1:88, -1:89, -2:89, -2:90, -1:90, -1:91, -2:91, -2:92, -1:92, -1:93, 0:93, 0:92, 1:92, 1:93, 2:93, 2:92, 3:92, 3:91, 2:91, 2:90, 3:90, 3:89, 2:89, 2:88, 1:88, 1:89, 0:89, 0:88; 0:90, 0:91, 1:91, 1:90;",
+
+		"1:88, 1:89, 2:89, 2:88; 1:90, 1:91, 2:91, 2:90; 1:92, 1:93, 2:93, 2:92; -1:88, -1:89, 0:89, 0:88; -1:90, -1:91, 0:91, 0:90; -1:92, -1:93, 0:93, 0:92;",
+	},
+
+	// Two interlocking square doughnuts centered around -S2::Origin().
+	{
+		"-1:-93, -1:-89, 3:-89, 3:-93;   0:-92, 0:-90, 2:-90, 2:-92;",
+		"-3:-91, -3:-87, 1:-87, 1:-91;   -2:-90, -2:-88, 0:-88, 0:-90;",
+		"-1:-91, -1:-90, 0:-90, 0:-91;   0:-90, 0:-89, 1:-89, 1:-90;",
+		"-1:-93, -1:-91, -3:-91, -3:-87, 1:-87, 1:-89, 3:-89, 3:-93; 0:-92, 0:-91, 1:-91, 1:-90, 2:-90, 2:-92; -2:-90, -2:-88, 0:-88, 0:-89, -1:-89, -1:-90;",
+
+		"-1:-93, -1:-91, 0:-91, 0:-92, 2:-92, 2:-90, 1:-90, 1:-89, 3:-89, 3:-93; -1:-90, -1:-89, 0:-89, 0:-90;",
+	},
+
+	// An incredibly thin triangle intersecting a square, such that the two
+	// intersection points of the triangle with the square are identical.
+	// This results in a degenerate loop that needs to be handled correctly.
+	{
+		"10:44, 10:46, 12:46, 12:44;",
+		"11:45, 89:45.00000000000001, 90:45;",
+		"", // Empty intersection!
+		// Original square with extra vertex, and triangle disappears (due to
+		// default vertex_merge_radius of S2EdgeUtil::kIntersectionTolerance).
+		"10:44, 10:46, 12:46, 12:45, 12:44;",
+		"10:44, 10:46, 12:46, 12:45, 12:44;",
+	},
+}
+
 func TestOperations(t *testing.T) {
-	//	var farSouth Polygon
-	//	farSouth.InitToIntersection(far_H, south_H)
-	//	CheckEqual(t, &farSouth, far_H_south_H, 1e-31)
+	var farSouth Polygon
+	farSouth.InitToIntersection(far_H, south_H)
+	CheckEqual(t, &farSouth, far_H_south_H, 1e-31)
+
+	for _, test := range testCases {
+		a := makepolygon(test.a)
+		b := makepolygon(test.b)
+		expected_a_and_b := makepolygon(test.a_and_b)
+		expected_a_or_b := makepolygon(test.a_or_b)
+		expected_a_minus_b := makepolygon(test.a_minus_b)
+		maxErr := 1e-4
+		var a_and_b, a_or_b, a_minus_b Polygon
+		a_and_b.InitToIntersection(a, b)
+		CheckEqual(t, &a_and_b, expected_a_and_b, maxErr)
+		a_or_b.InitToUnion(a, b)
+		CheckEqual(t, &a_or_b, expected_a_or_b, maxErr)
+		a_minus_b.InitToDifference(a, b)
+		CheckEqual(t, &a_minus_b, expected_a_minus_b, maxErr)
+	}
+}
+
+func TestPolylineIntersection(t *testing.T) {
+	for v := 0; v < 3; v++ {
+		polylineIntersectionSharedEdgeTest(t, cross1, v, 1)
+		polylineIntersectionSharedEdgeTest(t, cross1, v+1, -1)
+		polylineIntersectionSharedEdgeTest(t, cross1_side_hole, v, 1)
+		polylineIntersectionSharedEdgeTest(t, cross1_side_hole, v+1, -1)
+	}
+
+	const maxErr = 1e-4
+	for _, test := range testCases {
+		a := makepolygon(test.a)
+		b := makepolygon(test.b)
+		expected_a_and_b := makepolygon(test.a_and_b)
+
+		var points []Point
+		var polylines []*Polyline
+		for ab := 0; ab < 2; ab++ {
+			var tmp0, tmp1 *Polygon
+			if ab != 0 {
+				tmp0 = a
+				tmp1 = b
+			} else {
+				tmp0 = b
+				tmp1 = a
+			}
+			for l := 0; l < tmp0.NumLoops(); l++ {
+				points = []Point{}
+				if tmp0.Loop(l).IsHole() {
+					for v := tmp0.Loop(l).NumVertices(); v >= 0; v-- {
+						points = append(points, *tmp0.Loop(l).Vertex(v))
+					}
+				} else {
+					for v := 0; v <= tmp0.Loop(l).NumVertices(); v++ {
+						points = append(points, *tmp0.Loop(l).Vertex(v))
+					}
+				}
+				polyline := PolylineFromPoints(points)
+				var lines []*Polyline
+				tmp1.IntersectWithPolyline(polyline, &lines)
+				polylines = append(polylines, lines...)
+			}
+		}
+
+		builder := NewPolygonBuilder(DIRECTED_XOR())
+		for i := 0; i < len(polylines); i++ {
+			for j := 0; j < polylines[i].NumVertices()-1; j++ {
+				builder.AddEdge(polylines[i].Vertex(j), polylines[i].Vertex(j+1))
+			}
+		}
+		var a_and_b Polygon
+		if !builder.AssemblePolygon(&a_and_b, nil) {
+			t.Fatalf("AssemblePolygon() failed")
+		}
+		CheckEqual(t, &a_and_b, expected_a_and_b, maxErr)
+	}
+}
+
+func polylineIntersectionSharedEdgeTest(t *testing.T, p *Polygon, startVertex, dir int) {
+	var points []Point
+	points = append(points, *p.Loop(0).Vertex(startVertex))
+	points = append(points, *p.Loop(0).Vertex(startVertex + dir))
+	polyline := PolylineFromPoints(points)
+	var polylines []*Polyline
+	if dir < 0 {
+		p.IntersectWithPolyline(polyline, &polylines)
+		if len(polylines) != 0 {
+			t.Errorf("len(%v) != 0", polylines)
+		}
+		polylines = []*Polyline{}
+		p.SubtractFromPolyline(polyline, &polylines)
+		if len(polylines) != 1 {
+			t.Fatalf("len(%v) != 1", polylines)
+		}
+		if got := polylines[0].NumVertices(); got != 2 {
+			t.Fatalf("%v.NumVertices() == %v, want 2", polylines[0], got)
+		}
+		if points[0] != polylines[0].Vertex(0) {
+			t.Errorf("%v != %v", points[0], polylines[0].Vertex(0))
+		}
+		if points[1] != polylines[0].Vertex(1) {
+			t.Errorf("%v != %v", points[1], polylines[0].Vertex(1))
+		}
+	} else {
+		p.IntersectWithPolyline(polyline, &polylines)
+		if len(polylines) != 1 {
+			t.Fatalf("len(%v) != 1", polylines)
+		}
+		if got := polylines[0].NumVertices(); got != 2 {
+			t.Fatalf("%v.NumVertices() == %v, want 2", polylines[0], got)
+		}
+		if points[0] != polylines[0].Vertex(0) {
+			t.Errorf("%v != %v", points[0], polylines[0].Vertex(0))
+		}
+		if points[1] != polylines[0].Vertex(1) {
+			t.Errorf("%v != %v", points[1], polylines[0].Vertex(1))
+		}
+		polylines = []*Polyline{}
+		p.SubtractFromPolyline(polyline, &polylines)
+		if len(polylines) != 0 {
+			t.Errorf("len(%v) != 0", polylines)
+		}
+	}
+}
+
+func TestCellConstructorAndContains(t *testing.T) {
+	ll := LatLng{(40565459 * s1.E6), (-74645276 * s1.E6)}
+	cell := CellFromLatLng(ll)
+	cell_as_poly := NewPolygonFromCell(cell)
+	var empty Polygon
+	var poly_copy Polygon
+	poly_copy.InitToUnion(cell_as_poly, &empty)
+	if !poly_copy.ContainsPolygon(cell_as_poly) {
+		t.Errorf("%v.ContainsPolygon(%v) failed", poly_copy, cell_as_poly)
+	}
+	if !poly_copy.ContainsCell(cell) {
+		t.Errorf("%v.ContainsCell(%v) failed", poly_copy, cell)
+	}
 }
 
 func CheckEqual(t *testing.T, a, b *Polygon, maxError float64) {
 	if a.IsNormalized() && b.IsNormalized() {
-		//		t.Fatalf(a.BoundaryApproxEquals(b, maxError))
+		if !a.BoundaryApproxEquals(b, maxError) {
+			t.Fatalf("\nBoundaryApproxEquals() failed for:\n  A: %s\n\n  B: %s\n\n", polygonToString(a), polygonToString(b))
+		}
+	} else {
+		var a2, b2 Polygon
+		builder := NewPolygonBuilder(DIRECTED_XOR())
+		builder.AddPolygon(a)
+		if !builder.AssemblePolygon(&a2, nil) {
+			t.Fatalf("Expected true")
+		}
+		builder.AddPolygon(b)
+		if !builder.AssemblePolygon(&b2, nil) {
+			t.Fatalf("Expected true")
+		}
+		if !a2.BoundaryApproxEquals(&b2, maxError) {
+			t.Fatalf("Expected approx equals")
+		}
 	}
+}
+
+func checkDisjoint(t *testing.T, a, b *Polygon) {
+	builder := NewPolygonBuilder(DIRECTED_XOR())
+	builder.AddPolygon(a)
+	builder.AddPolygon(b)
+	var ab Polygon
+	if !builder.AssemblePolygon(&ab, nil) {
+		log.Fatalf("%v.AssemblePolygon(%v, nil) failed", builder, ab)
+	}
+
+	var c, d, e, f Polygon
+	c.InitToUnion(a, b)
+	CheckEqual(t, &c, &ab, 1e-31)
+	checkUnion(t, a, b)
+
+	d.InitToIntersection(a, b)
+	if got := d.NumLoops(); got != 0 {
+		t.Errorf("%v.NumLoop() == %v, expected 0", d, got)
+	}
+
+	e.InitToDifference(a, b)
+	CheckEqual(t, &e, a, 1e-31)
+
+	f.InitToDifference(b, a)
+	CheckEqual(t, &f, b, 1e-31)
+}
+
+func checkUnion(t *testing.T, a, b *Polygon) {
+	var cUnion Polygon
+	cUnion.InitToUnion(a, b)
+	cDestructiveUnion := DestructiveUnion(&[]*Polygon{a, b})
+	CheckEqual(t, &cUnion, cDestructiveUnion, 1e-31)
+}
+
+func checkContains2(t *testing.T, a, b *Polygon) {
+	var c, d, e Polygon
+	c.InitToUnion(a, b)
+	CheckEqual(t, &c, a, 1e-31)
+	checkUnion(t, &c, a)
+
+	d.InitToIntersection(a, b)
+	CheckEqual(t, &d, b, 1e-31)
+
+	e.InitToDifference(b, a)
+	if got := e.NumLoops(); got != 0 {
+		t.Errorf("%v.NumLoops() == %v, want 0", e, got)
+	}
+}
+
+func CheckContains(t *testing.T, astr, bstr string) {
+	a := makepolygon(astr)
+	b := makepolygon(bstr)
+	if !a.ContainsPolygon(b) {
+		t.Errorf("!%v.Contains(%v)", a, b)
+	}
+}
+
+func CheckContainsPoint(t *testing.T, astr, bstr string) {
+	a := makepolygon(astr)
+	if !a.ContainsPoint(makepoint(bstr)) {
+		t.Errorf("%v.ContainsPoint(%v) == false", a, makepoint(bstr))
+	}
+}
+
+func appendVertex(v Point, s *string) {
+	ll := LatLngFromPoint(v)
+	*s += fmt.Sprintf("%.17f:%.17f", ll.Lat.Degrees(), ll.Lng.Degrees())
+}
+
+func appendLoopVertices(loop *Loop, s *string) {
+	for i := 0; i < loop.NumVertices(); i++ {
+		if i > 0 {
+			*s += ", "
+		}
+		appendVertex(*loop.Vertex(i), s)
+	}
+}
+
+func polygonToString(poly *Polygon) string {
+	var s string
+	for i := 0; i < poly.NumLoops(); i++ {
+		loop := poly.Loop(i)
+		if i > 0 {
+			s += ";\n"
+		}
+		appendLoopVertices(loop, &s)
+	}
+	return s
+}
+
+func choosePiece(pieces *[]*Polygon) *Polygon {
+	i := rand.Intn(len(*pieces))
+	res := (*pieces)[i]
+	*pieces = append((*pieces)[:i], (*pieces)[i+1:]...)
+	return res
 }
