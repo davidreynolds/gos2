@@ -11,6 +11,11 @@ import (
 )
 
 func makepolygon(s string) *Polygon {
+	loops := makeloops(s)
+	return NewPolygonFromLoops(&loops)
+}
+
+func makeloops(s string) []*Loop {
 	loopStrs := strings.Split(s, ";")
 	loops := []*Loop{}
 	for _, str := range loopStrs {
@@ -20,7 +25,7 @@ func makepolygon(s string) *Polygon {
 			loops = append(loops, loop)
 		}
 	}
-	return NewPolygonFromLoops(&loops)
+	return loops
 }
 
 var (
@@ -219,6 +224,14 @@ func TestRelations(t *testing.T) {
 		if !test.intersects {
 			checkDisjoint(t, test.a, test.b)
 		}
+	}
+}
+
+var benchLoops = makeloops(kSouth0c + kFar2 + kNear1 + kNearFar1 + kNear0 + kSouth1 + kSouth0b + kSouth0a)
+
+func BenchmarkInit(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		NewPolygonFromLoops(&benchLoops)
 	}
 }
 

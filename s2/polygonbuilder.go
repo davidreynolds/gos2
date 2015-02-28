@@ -186,7 +186,11 @@ type VertexSet struct {
 	vertices []Point
 }
 
-func NewVertexSet() *VertexSet { return &VertexSet{[]Point{}} }
+func NewVertexSet() *VertexSet {
+	return &VertexSet{
+		vertices: []Point{},
+	}
+}
 
 func (vs *VertexSet) Len() int           { return len(vs.vertices) }
 func (vs *VertexSet) Swap(i, j int)      { vs.vertices[i], vs.vertices[j] = vs.vertices[j], vs.vertices[i] }

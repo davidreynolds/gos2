@@ -55,7 +55,7 @@ type Loop struct {
 	index         LoopIndex
 
 	// Map for speeding up FindVertex: We will compute a map from vertex to
-	// index in the vertex array as soon as there has been enough calls.
+	// index in the vertex array as soon as there have been enough calls.
 	num_find_vertex_calls int
 	vertex_to_index       map[Point]int
 }
@@ -273,15 +273,16 @@ func (l *Loop) GetSurfaceIntegral(fn f_tri, sum Summer) {
 			// We are about to create an unstable edge, so choose a new origin O'
 			// for the triangle fan.
 			oldOrigin := origin
-			if origin == *l.vertex(0) {
+			switch {
+			case origin == *l.vertex(0):
 				// The following point is well-separated from V_i and V_0
 				// (and therefore V_i+1 as well).
 				origin = Point{(*l.vertex(0)).PointCross(*l.vertex(i)).Normalize()}
-			} else if (*l.vertex(i)).Angle((*l.vertex(0)).Vector).Radians() < kMaxLength {
+			case (*l.vertex(i)).Angle((*l.vertex(0)).Vector).Radians() < kMaxLength:
 				// All edges of the triangle (O, V_0, V_i) are stable,
 				// so we can revert to using V_0 as the origin.
 				origin = *l.vertex(0)
-			} else {
+			default:
 				// (O, V_i+1) and (V_0, V_i) are antipodal pairs, and O and V_0
 				// are perpendicular. Therefore V_0.Cross(0) is approximately
 				// perpendicular to all of {O, V_0, V_i, V_i+1}, and we can
@@ -301,7 +302,6 @@ func (l *Loop) GetSurfaceIntegral(fn f_tri, sum Summer) {
 		// Advance the edge (O, V_n-1) to (O, V_0).
 		sum.Add(fn(origin, *l.vertex(len(l.vertices) - 1), *l.vertex(0)))
 	}
-	//	return sum
 }
 
 func (l *Loop) Area() float64 {

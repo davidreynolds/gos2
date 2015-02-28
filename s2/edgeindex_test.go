@@ -111,6 +111,16 @@ func TestRandomEdgeCrossings(t *testing.T) {
 	CheckCrossingsRandomInCap(t, 500, 5000, 5000, 5000, 20)
 }
 
+func BenchmarkComputeIndex(b *testing.B) {
+	var allEdges []Edge
+	GenerateRandomEarthEdges(100, 5000, 2000, &allEdges)
+	idx := EdgeVectorIndex{NewEdgeIndex(), &allEdges}
+	for i := 0; i < b.N; i++ {
+		ComputeIndex(&idx)
+		idx.Reset()
+	}
+}
+
 func TestRandomEdgeCrossingsSparse(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		CheckCrossingsRandomInCap(t, 2000, 100, 5000, 500, 8)

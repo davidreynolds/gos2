@@ -22,15 +22,19 @@ type CellEdgeMultimap struct {
 	items []CellEdge
 }
 
-func NewCellEdgeMultimap() CellEdgeMultimap { return CellEdgeMultimap{[]CellEdge{}} }
+func NewCellEdgeMultimap() CellEdgeMultimap {
+	return CellEdgeMultimap{
+		items: []CellEdge{},
+	}
+}
 
 func (m *CellEdgeMultimap) Len() int      { return len(m.items) }
 func (m *CellEdgeMultimap) Swap(i, j int) { m.items[i], m.items[j] = m.items[j], m.items[i] }
 func (m *CellEdgeMultimap) Less(i, j int) bool {
-	if uint64(m.items[i].cellId) < uint64(m.items[j].cellId) {
+	if m.items[i].cellId < m.items[j].cellId {
 		return true
 	}
-	if uint64(m.items[j].cellId) < uint64(m.items[i].cellId) {
+	if m.items[j].cellId < m.items[i].cellId {
 		return false
 	}
 	if m.items[i].edgeId < m.items[j].edgeId {
@@ -41,7 +45,6 @@ func (m *CellEdgeMultimap) Less(i, j int) bool {
 
 func (m *CellEdgeMultimap) Insert(ce CellEdge) {
 	m.items = append(m.items, ce)
-	sort.Sort(m)
 }
 
 func (m CellEdgeMultimap) LowerBound(id CellID) int {
@@ -68,6 +71,7 @@ type EdgeIndexer interface {
 	Reset()
 	MappingInsert(id CellID, k int)
 	Mapping() *CellEdgeMultimap
+	Sort()
 	edge_from(i int) *Point
 	edge_to(i int) *Point
 }
@@ -104,6 +108,7 @@ func (idx EdgeIndex) IndexComputed() bool             { return idx.indexComputed
 func (idx *EdgeIndex) SetIndexComputed(b bool)        { idx.indexComputed = b }
 func (idx *EdgeIndex) MappingInsert(id CellID, k int) { idx.mapping.Insert(CellEdge{id, k}) }
 func (idx *EdgeIndex) Mapping() *CellEdgeMultimap     { return &idx.mapping }
+func (idx *EdgeIndex) Sort()                          { sort.Sort(&idx.mapping) }
 
 // Appends to "candidate_crossings" all edge references which may cross the
 // given edge. This is done by covering the edge and then finding all references
@@ -209,6 +214,7 @@ func ComputeIndex(idx EdgeIndexer) {
 			idx.MappingInsert(cid, i)
 		}
 	}
+	idx.Sort()
 	idx.SetIndexComputed(true)
 }
 

@@ -296,9 +296,6 @@ func (p *Polygon) InsertLoop(newLoop, parent *Loop, loopMap LoopMap) {
 			return
 		}
 	}
-	// No loop may contain the complement of another loop. (Handling this
-	// case is significantly more complicated).
-	//
 	// Some of the children of the parent loop may now be children of the
 	// new loop.
 	for i := 0; i < len(loopMap[parent]); {

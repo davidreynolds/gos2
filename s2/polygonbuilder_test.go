@@ -69,6 +69,40 @@ func TestSingleLoop(t *testing.T) {
 	}
 }
 
+func BenchmarkBuilder(b *testing.B) {
+	test := TestCase{-1, 0, true, 0.0, 0.9, 30.0, // Directed edges required for unique result.
+		[]Chain{
+			Chain{"0:0, 0:2, 0:4, 0:6, 1:5, 2:4, 3:3, 2:2, 1:1", true},
+			Chain{"0:2, 1:1, 1:3", true},
+			Chain{"0:4, 1:3, 1:5", true},
+			Chain{"1:3, 2:2, 2:4", true},
+			Chain{"0:0, -1:1", false},
+			Chain{"3:3, 5:5", false},
+		}, []string{
+			"0:0, 0:2, 1:1",
+			"0:2, 0:4, 1:3",
+			"0:4, 0:6, 1:5",
+			"1:1, 1:3, 2:2",
+			"1:3, 1:5, 2:4",
+			"2:2, 2:4, 3:3",
+		}, 2}
+	builder := NewPolygonBuilder(DIRECTED_XOR())
+	for _, chain := range test.chainsIn {
+		var vertices []Point
+		line := makePolyline(chain.str)
+		for _, v := range line.vertices {
+			vertices = append(vertices, Point{v.Vector})
+		}
+		for i := 1; i < len(vertices); i++ {
+			builder.AddEdge(vertices[i-1], vertices[i])
+		}
+	}
+	var poly Polygon
+	for i := 0; i < b.N; i++ {
+		builder.AssemblePolygon(&poly, nil)
+	}
+}
+
 type Chain struct {
 	str    string
 	closed bool
