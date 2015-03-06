@@ -136,8 +136,8 @@ type EdgeCrosser struct {
 	acb int    // The orientation of the triangle ACB.
 }
 
-func NewEdgeCrosser(a, b, c *Point) EdgeCrosser {
-	ec := EdgeCrosser{
+func NewEdgeCrosser(a, b, c *Point) *EdgeCrosser {
+	ec := &EdgeCrosser{
 		a:         a,
 		b:         b,
 		a_cross_b: Point{a.Cross(b.Vector)},
@@ -279,11 +279,11 @@ type RectBounder struct {
 	bound  Rect   // The current bounding rectangle.
 }
 
-func NewRectBounder() RectBounder {
-	return RectBounder{bound: EmptyRect()}
+func NewRectBounder() *RectBounder {
+	return &RectBounder{bound: EmptyRect()}
 }
 
-func (r RectBounder) Bound() Rect {
+func (r *RectBounder) Bound() Rect {
 	return r.bound
 }
 

@@ -22,8 +22,8 @@ type CellEdgeMultimap struct {
 	items []CellEdge
 }
 
-func NewCellEdgeMultimap() CellEdgeMultimap {
-	return CellEdgeMultimap{
+func NewCellEdgeMultimap() *CellEdgeMultimap {
+	return &CellEdgeMultimap{
 		items: []CellEdge{},
 	}
 }
@@ -47,14 +47,14 @@ func (m *CellEdgeMultimap) Insert(ce CellEdge) {
 	m.items = append(m.items, ce)
 }
 
-func (m CellEdgeMultimap) LowerBound(id CellID) int {
+func (m *CellEdgeMultimap) LowerBound(id CellID) int {
 	idx := sort.Search(m.Len(), func(k int) bool {
 		return uint64(m.items[k].cellId) >= uint64(id)
 	})
 	return idx
 }
 
-func (m CellEdgeMultimap) UpperBound(id CellID) int {
+func (m *CellEdgeMultimap) UpperBound(id CellID) int {
 	// XXX: Is this a good way to get the upper bound?
 	return m.LowerBound(id.Next())
 }
@@ -77,14 +77,14 @@ type EdgeIndexer interface {
 }
 
 type EdgeIndex struct {
-	mapping       CellEdgeMultimap
+	mapping       *CellEdgeMultimap
 	minLevelUsed  int
 	queryCount    int
 	indexComputed bool
 }
 
-func NewEdgeIndex() EdgeIndex {
-	return EdgeIndex{
+func NewEdgeIndex() *EdgeIndex {
+	return &EdgeIndex{
 		indexComputed: false,
 		queryCount:    0,
 		minLevelUsed:  maxLevel,
@@ -99,16 +99,16 @@ func (idx *EdgeIndex) Reset() {
 	idx.mapping = NewCellEdgeMultimap()
 }
 
-func (idx EdgeIndex) QueryCount() int                 { return idx.queryCount }
+func (idx *EdgeIndex) QueryCount() int                { return idx.queryCount }
 func (idx *EdgeIndex) SetQueryCount(n int)            { idx.queryCount = n }
 func (idx *EdgeIndex) IncrementQueryCount()           { idx.queryCount++ }
-func (idx EdgeIndex) MinLevelUsed() int               { return idx.minLevelUsed }
+func (idx *EdgeIndex) MinLevelUsed() int              { return idx.minLevelUsed }
 func (idx *EdgeIndex) SetMinLevelUsed(level int)      { idx.minLevelUsed = level }
-func (idx EdgeIndex) IndexComputed() bool             { return idx.indexComputed }
+func (idx *EdgeIndex) IndexComputed() bool            { return idx.indexComputed }
 func (idx *EdgeIndex) SetIndexComputed(b bool)        { idx.indexComputed = b }
 func (idx *EdgeIndex) MappingInsert(id CellID, k int) { idx.mapping.Insert(CellEdge{id, k}) }
-func (idx *EdgeIndex) Mapping() *CellEdgeMultimap     { return &idx.mapping }
-func (idx *EdgeIndex) Sort()                          { sort.Sort(&idx.mapping) }
+func (idx *EdgeIndex) Mapping() *CellEdgeMultimap     { return idx.mapping }
+func (idx *EdgeIndex) Sort()                          { sort.Sort(idx.mapping) }
 
 // Appends to "candidate_crossings" all edge references which may cross the
 // given edge. This is done by covering the edge and then finding all references
@@ -119,9 +119,9 @@ func FindCandidateCrossings(idx EdgeIndexer, a, b Point, candidate_crossings *[]
 	cover, _ := GetCovering(idx, a, b, false)
 	EdgesInParentCells(idx, cover, idx.Mapping(), idx.MinLevelUsed(), candidate_crossings)
 	EdgesInChildrenCells(idx, a, b, &cover, idx.Mapping(), candidate_crossings)
-	uniq := map[int]bool{}
+	uniq := make(map[int]struct{})
 	for _, c := range *candidate_crossings {
-		uniq[c] = true
+		uniq[c] = struct{}{}
 	}
 	*candidate_crossings = []int{}
 	for k, _ := range uniq {
@@ -131,11 +131,11 @@ func FindCandidateCrossings(idx EdgeIndexer, a, b Point, candidate_crossings *[]
 
 func EdgesInParentCells(idx EdgeIndexer, cover []CellID, mapping *CellEdgeMultimap, min_level_used int, candidate_crossings *[]int) {
 	// Find all parent cells of covering cells.
-	parent_cells := map[CellID]bool{}
+	parent_cells := make(map[CellID]struct{})
 	for _, cid := range cover {
 		for parentLevel := cid.Level() - 1; parentLevel >= min_level_used; parentLevel-- {
 			if _, ok := parent_cells[cid.Parent(parentLevel)]; !ok {
-				parent_cells[cid.Parent(parentLevel)] = true
+				parent_cells[cid.Parent(parentLevel)] = struct{}{}
 			} else {
 				break
 			}
@@ -228,7 +228,6 @@ func containingCell4(pa, pb, pc, pd Point) CellID {
 	if a.Face() != b.Face() || a.Face() != c.Face() || a.Face() != d.Face() {
 		return Sentinel()
 	}
-
 	for a != b || a != c || a != d {
 		a = a.immediateParent()
 		b = b.immediateParent()
@@ -313,10 +312,11 @@ func GetCovering(idx EdgeIndexer, a, b Point, thicken_edge bool) ([]CellID, int)
 }
 
 func PredictAdditionalCalls(idx EdgeIndexer, n int) {
-	if !idx.IndexComputed() {
-		if idx.NumEdges() > 100 && (idx.QueryCount()+n) > 30 {
-			ComputeIndex(idx)
-		}
+	if idx.IndexComputed() {
+		return
+	}
+	if idx.NumEdges() > 100 && (idx.QueryCount()+n) > 30 {
+		ComputeIndex(idx)
 	}
 }
 

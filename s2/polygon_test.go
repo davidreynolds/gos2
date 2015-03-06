@@ -271,10 +271,10 @@ func SplitAndAssemble(t *testing.T, polygon *Polygon) {
 		coverer.SetMaxLevel(level)
 		coverer.SetMaxCells(500)
 
-		cells := coverer.Covering(*polygon)
+		cells := coverer.Covering(polygon)
 		var covering CellUnion
 		covering.Init(cells)
-		CheckCompleteCovering(t, *polygon, covering, false, CellID(0))
+		CheckCompleteCovering(t, polygon, covering, false, CellID(0))
 		var pieces []*Polygon
 		for i := 0; i < len(cells); i++ {
 			cell := CellFromCellID(cells[i])

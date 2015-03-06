@@ -612,7 +612,7 @@ func TestQuadtreeGetsComputedAutomatically(t *testing.T) {
 	loop := makeRegularLoop(loopCenter, numVerts, 7e-3)
 	q := makepoint("5:5")
 	index := NewLoopIndex(loop)
-	it := NewEdgeIndexIterator(&index)
+	it := NewEdgeIndexIterator(index)
 	numCandidates := 0
 	it.GetCandidates(q, q)
 	for ; !it.Done(); it.Next() {

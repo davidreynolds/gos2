@@ -12,9 +12,40 @@ type LoopMap map[*Loop][]*Loop
 type Polygon struct {
 	loops       []*Loop
 	bound       Rect
-	ownsLoops   bool
 	hasHoles    bool
 	numVertices int
+}
+
+func NewPolygonFromLoops(loops *[]*Loop) *Polygon {
+	p := &Polygon{
+		bound:    EmptyRect(),
+		hasHoles: false,
+	}
+	p.Init(loops)
+	return p
+}
+
+func NewPolygonFromLoop(loop *Loop) *Polygon {
+	p := &Polygon{
+		loops:       []*Loop{},
+		bound:       loop.Bound(),
+		hasHoles:    false,
+		numVertices: len(loop.vertices),
+	}
+	p.loops = append(p.loops, loop)
+	return p
+}
+
+func NewPolygonFromCell(cell Cell) *Polygon {
+	p := &Polygon{
+		loops:       []*Loop{},
+		bound:       EmptyRect(),
+		numVertices: 4,
+	}
+	loop := NewLoopFromCell(cell)
+	p.bound = loop.Bound()
+	p.loops = append(p.loops, loop)
+	return p
 }
 
 func ContainsChild(a, b *Loop, loopMap LoopMap) bool {
@@ -30,8 +61,8 @@ func ContainsChild(a, b *Loop, loopMap LoopMap) bool {
 	return false
 }
 
-func (p Polygon) NumLoops() int    { return len(p.loops) }
-func (p Polygon) Loop(k int) *Loop { return p.loops[k] }
+func (p *Polygon) NumLoops() int    { return len(p.loops) }
+func (p *Polygon) Loop(k int) *Loop { return p.loops[k] }
 
 func (p *Polygon) Init(loops *[]*Loop) {
 	p.loops = make([]*Loop, len(*loops))
@@ -61,50 +92,15 @@ func (p *Polygon) Init(loops *[]*Loop) {
 	}
 }
 
-func NewPolygonFromLoops(loops *[]*Loop) *Polygon {
-	p := &Polygon{
-		bound:     EmptyRect(),
-		ownsLoops: true,
-		hasHoles:  false,
-	}
-	p.Init(loops)
-	return p
-}
-
-func NewPolygonFromLoop(loop *Loop) *Polygon {
-	p := &Polygon{
-		loops:       []*Loop{},
-		bound:       loop.Bound(),
-		ownsLoops:   false,
-		hasHoles:    false,
-		numVertices: len(loop.vertices),
-	}
-	p.loops = append(p.loops, loop)
-	return p
-}
-
-func NewPolygonFromCell(cell Cell) *Polygon {
-	p := &Polygon{
-		loops:       []*Loop{},
-		bound:       EmptyRect(),
-		ownsLoops:   true,
-		numVertices: 4,
-	}
-	loop := NewLoopFromCell(cell)
-	p.bound = loop.Bound()
-	p.loops = append(p.loops, loop)
-	return p
-}
-
-func (p Polygon) CapBound() Cap {
+func (p *Polygon) CapBound() Cap {
 	return p.bound.CapBound()
 }
 
-func (p Polygon) RectBound() Rect {
+func (p *Polygon) RectBound() Rect {
 	return p.bound
 }
 
-func (a Polygon) ContainsOrCrosses(b *Loop) int {
+func (a *Polygon) ContainsOrCrosses(b *Loop) int {
 	inside := false
 	for _, loop := range a.loops {
 		result := loop.ContainsOrCrosses(b)
@@ -121,7 +117,7 @@ func (a Polygon) ContainsOrCrosses(b *Loop) int {
 	return 0
 }
 
-func (a Polygon) AnyLoopContains(b *Loop) bool {
+func (a *Polygon) AnyLoopContains(b *Loop) bool {
 	for _, loop := range a.loops {
 		if loop.ContainsLoop(b) {
 			return true
@@ -204,7 +200,7 @@ func (a *Polygon) ContainsPolygon(b *Polygon) bool {
 	return a.ContainsAllShells(b) && b.ExcludesAllHoles(a)
 }
 
-func (a Polygon) ContainsPoint(p Point) bool {
+func (a *Polygon) ContainsPoint(p Point) bool {
 	if len(a.loops) == 1 {
 		return a.loops[0].Contains(p)
 	}
@@ -221,7 +217,7 @@ func (a Polygon) ContainsPoint(p Point) bool {
 	return inside
 }
 
-func (p Polygon) ContainsCell(cell Cell) bool {
+func (p *Polygon) ContainsCell(cell Cell) bool {
 	if len(p.loops) == 1 {
 		return p.loops[0].ContainsCell(cell)
 	}
@@ -233,7 +229,7 @@ func (p Polygon) ContainsCell(cell Cell) bool {
 	return p.ContainsPolygon(poly)
 }
 
-func (p Polygon) MayIntersect(cell Cell) bool {
+func (p *Polygon) MayIntersect(cell Cell) bool {
 	if len(p.loops) == 1 {
 		return p.loops[0].MayIntersect(cell)
 	}
@@ -476,7 +472,7 @@ func (p *Polygon) InternalClipPolyline(invert bool, a *Polyline, out *[]*Polylin
 	for j := 0; j < n-1; j++ {
 		a0 := a.Vertex(j)
 		a1 := a.Vertex(j + 1)
-		ClipEdge(a0, a1, &index, true, &intersections)
+		ClipEdge(a0, a1, index, true, &intersections)
 		if inside {
 			intersections = append(intersections, FloatPointPair{0, a0})
 		}
@@ -691,7 +687,7 @@ func ClipEdge(a0, a1 Point, bIndex *PolygonIndex, add_shared_edges bool, interse
 
 func ClipBoundary(a *Polygon, reverse_a bool, b *Polygon, reverse_b bool, invert_b, add_shared_edges bool, builder *PolygonBuilder) {
 	bIndex := NewPolygonIndex(b, reverse_b)
-	PredictAdditionalCalls(&bIndex, a.numVertices)
+	PredictAdditionalCalls(bIndex, a.numVertices)
 	for _, aLoop := range a.loops {
 		n := aLoop.NumVertices()
 		dir := 1
@@ -707,7 +703,7 @@ func ClipBoundary(a *Polygon, reverse_a bool, b *Polygon, reverse_b bool, invert
 			a0 := *aLoop.vertex(j)
 			a1 := *aLoop.vertex(j + dir)
 			var intersections IntersectionSet
-			ClipEdge(a0, a1, &bIndex, add_shared_edges, &intersections)
+			ClipEdge(a0, a1, bIndex, add_shared_edges, &intersections)
 			if inside {
 				intersections = append(intersections, FloatPointPair{0, a0})
 			}
@@ -731,7 +727,7 @@ type LoopSequenceIndexer interface {
 }
 
 type LoopSequenceIndex struct {
-	EdgeIndex
+	*EdgeIndex
 	index_to_loop       []int
 	loop_to_first_index []int
 	num_edges           int
@@ -761,7 +757,7 @@ type PolygonIndex struct {
 	reverse bool
 }
 
-func (idx PolygonIndex) EdgeFromTo(i int) (from *Point, to *Point) {
+func (idx *PolygonIndex) EdgeFromTo(i int) (from *Point, to *Point) {
 	loopIndex, vertexInLoop := idx.DecodeIndex(i)
 	loop := idx.poly.Loop(loopIndex)
 	var fromIdx, toIdx int
@@ -777,17 +773,21 @@ func (idx PolygonIndex) EdgeFromTo(i int) (from *Point, to *Point) {
 	return
 }
 
-func (idx PolygonIndex) edge_from(i int) *Point {
+func (idx *PolygonIndex) edge_from(i int) *Point {
 	from, _ := idx.EdgeFromTo(i)
 	return from
 }
-func (idx PolygonIndex) edge_to(i int) *Point {
+func (idx *PolygonIndex) edge_to(i int) *Point {
 	_, to := idx.EdgeFromTo(i)
 	return to
 }
 
-func NewPolygonIndex(poly *Polygon, reverse bool) PolygonIndex {
-	p := PolygonIndex{LoopSequenceIndex: NewLoopSequenceIndex(), poly: poly, reverse: reverse}
+func NewPolygonIndex(poly *Polygon, reverse bool) *PolygonIndex {
+	p := &PolygonIndex{
+		LoopSequenceIndex: NewLoopSequenceIndex(),
+		poly:              poly,
+		reverse:           reverse,
+	}
 	for i := 0; i < p.poly.NumLoops(); i++ {
 		p.AddLoop(p.poly.Loop(i).NumVertices())
 	}

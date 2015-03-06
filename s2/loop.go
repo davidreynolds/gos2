@@ -9,12 +9,12 @@ import (
 
 // Indexing structure to efficiently compute intersections.
 type LoopIndex struct {
-	EdgeIndex
+	*EdgeIndex
 	loop *Loop
 }
 
-func NewLoopIndex(loop *Loop) LoopIndex {
-	return LoopIndex{
+func NewLoopIndex(loop *Loop) *LoopIndex {
+	return &LoopIndex{
 		EdgeIndex: NewEdgeIndex(),
 		loop:      loop,
 	}
@@ -28,7 +28,7 @@ func (idx *LoopIndex) edge_to(i int) *Point {
 	return idx.loop.vertex(i + 1)
 }
 
-func (idx LoopIndex) NumEdges() int {
+func (idx *LoopIndex) NumEdges() int {
 	return len(idx.loop.vertices)
 }
 
@@ -52,7 +52,7 @@ type Loop struct {
 	bound         Rect
 	origin_inside bool
 	depth         int
-	index         LoopIndex
+	index         *LoopIndex
 
 	// Map for speeding up FindVertex: We will compute a map from vertex to
 	// index in the vertex array as soon as there have been enough calls.
@@ -91,7 +91,7 @@ func NewLoopFromCell(cell Cell) *Loop {
 	return loop
 }
 
-func (l Loop) IsValid() bool {
+func (l *Loop) IsValid() bool {
 	// Loops must have 3 vertices.
 	if len(l.vertices) < 3 {
 		return false
@@ -112,8 +112,8 @@ func (l Loop) IsValid() bool {
 	}
 	// Non-adjacent edges are not allowed to intersect.
 	crosses := false
-	PredictAdditionalCalls(&l.index, len(l.vertices))
-	it := NewEdgeIndexIterator(&l.index)
+	PredictAdditionalCalls(l.index, len(l.vertices))
+	it := NewEdgeIndexIterator(l.index)
 	for i := 0; i < len(l.vertices); i++ {
 		crosser := NewEdgeCrosser(l.vertex(i), l.vertex(i+1), l.vertex(0))
 		prevIndex := -2
@@ -137,10 +137,10 @@ func (l Loop) IsValid() bool {
 	return !crosses
 }
 
-func (l Loop) Depth() int { return l.depth }
+func (l *Loop) Depth() int { return l.depth }
 
-func (l Loop) IsHole() bool { return (l.depth & 1) != 0 }
-func (l Loop) Sign() int {
+func (l *Loop) IsHole() bool { return (l.depth & 1) != 0 }
+func (l *Loop) Sign() int {
 	if l.IsHole() {
 		return -1
 	}
@@ -160,11 +160,11 @@ func (l *Loop) Clone() *Loop {
 	return loop
 }
 
-func (l Loop) Bound() Rect {
+func (l *Loop) Bound() Rect {
 	return l.bound
 }
 
-func (l Loop) CapBound() Cap {
+func (l *Loop) CapBound() Cap {
 	return l.bound.CapBound()
 }
 
@@ -321,7 +321,9 @@ func (l *Loop) Centroid() Point {
 }
 
 func (l *Loop) ResetMutableFields() {
-	l.index.Reset()
+	if l.index != nil {
+		l.index.Reset()
+	}
 	l.num_find_vertex_calls = 0
 	l.vertex_to_index = map[Point]int{}
 }
@@ -386,10 +388,10 @@ func (l *Loop) InitBound() {
 	l.bound = b
 }
 
-func (l Loop) NumVertices() int    { return len(l.vertices) }
-func (l Loop) Vertex(i int) *Point { return l.vertex(i) }
+func (l *Loop) NumVertices() int    { return len(l.vertices) }
+func (l *Loop) Vertex(i int) *Point { return l.vertex(i) }
 
-func (l Loop) vertex(i int) *Point {
+func (l *Loop) vertex(i int) *Point {
 	j := i - l.NumVertices()
 	if j >= 0 {
 		return &l.vertices[j]
@@ -397,7 +399,7 @@ func (l Loop) vertex(i int) *Point {
 	return &l.vertices[i]
 }
 
-func (l Loop) IsNormalized() bool {
+func (l *Loop) IsNormalized() bool {
 	// Optimization: if the longitude span is less than 180 degrees, then
 	// the loop covers less than half the sphere and is therefore
 	// normalized.
@@ -416,7 +418,7 @@ func (l *Loop) Normalize() {
 }
 
 // Return (first, dir) such that first..first+n*dir are valid indices.
-func (l Loop) CanonicalFirstVertex() (first, dir int) {
+func (l *Loop) CanonicalFirstVertex() (first, dir int) {
 	first = 0
 	n := l.NumVertices()
 	for i := 1; i < n; i++ {
@@ -435,7 +437,7 @@ func (l Loop) CanonicalFirstVertex() (first, dir int) {
 	return
 }
 
-func (l Loop) TurningAngle() float64 {
+func (l *Loop) TurningAngle() float64 {
 	// Don't crash even if the loop is not well-defined.
 	if l.NumVertices() < 3 {
 		return 0
@@ -456,7 +458,7 @@ func (l Loop) TurningAngle() float64 {
 	return float64(dir) * angle
 }
 
-func (l Loop) ContainsCell(cell Cell) bool {
+func (l *Loop) ContainsCell(cell Cell) bool {
 	if !l.bound.ContainsPoint(cell.Center()) {
 		return false
 	}
@@ -464,7 +466,7 @@ func (l Loop) ContainsCell(cell Cell) bool {
 	return l.ContainsLoop(cell_loop)
 }
 
-func (a Loop) ContainsLoop(b *Loop) bool {
+func (a *Loop) ContainsLoop(b *Loop) bool {
 	// For this loop A to contain the given loop B, all of the following
 	// must be true:
 	//
@@ -511,7 +513,7 @@ func (a Loop) ContainsLoop(b *Loop) bool {
 	return true
 }
 
-func (a Loop) ContainsNested(b *Loop) bool {
+func (a *Loop) ContainsNested(b *Loop) bool {
 	if !a.bound.ContainsRect(b.bound) {
 		return false
 	}
@@ -529,9 +531,9 @@ func (a Loop) ContainsNested(b *Loop) bool {
 		*b.vertex(0), *b.vertex(2))
 }
 
-func (l Loop) ContainsPoint(p Point) bool { return l.Contains(p) }
+func (l *Loop) ContainsPoint(p Point) bool { return l.Contains(p) }
 
-func (l Loop) Contains(p Point) bool {
+func (l *Loop) Contains(p Point) bool {
 	if !l.bound.Contains(LatLngFromPoint(p)) {
 		return false
 	}
@@ -546,7 +548,7 @@ func (l Loop) Contains(p Point) bool {
 		return inside
 	}
 
-	it := NewEdgeIndexIterator(&l.index)
+	it := NewEdgeIndexIterator(l.index)
 	prev_index := -2
 	for it.GetCandidates(origin, p); !it.Done(); it.Next() {
 		ai := it.Index()
@@ -649,8 +651,8 @@ func (p *ContainsOrCrossesProcessor) ProcessWedge(a0, ab1, a2, b0, b2 Point) boo
 //
 // See Intersects().
 func (a *Loop) AreBoundariesCrossing(b *Loop, wedge_processor WedgeProcessor) bool {
-	PredictAdditionalCalls(&a.index, len(b.vertices))
-	it := NewEdgeIndexIterator(&a.index)
+	PredictAdditionalCalls(a.index, len(b.vertices))
+	it := NewEdgeIndexIterator(a.index)
 	for j := 0; j < len(b.vertices); j++ {
 		crosser := NewEdgeCrosser(b.vertex(j), b.vertex(j+1), b.vertex(0))
 		prev_index := -2

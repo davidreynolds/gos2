@@ -10,14 +10,14 @@ import (
 )
 
 type EdgeVectorIndex struct {
-	EdgeIndex
+	*EdgeIndex
 	edges *[]Edge
 }
 
-func (idx EdgeVectorIndex) NumEdges() int          { return len(*idx.edges) }
-func (idx EdgeVectorIndex) edge_from(i int) *Point { return &(*idx.edges)[i].v1 }
-func (idx EdgeVectorIndex) edge_to(i int) *Point   { return &(*idx.edges)[i].v0 }
-func (idx *EdgeVectorIndex) IncrementQueryCount()  { idx.EdgeIndex.IncrementQueryCount() }
+func (idx *EdgeVectorIndex) NumEdges() int          { return len(*idx.edges) }
+func (idx *EdgeVectorIndex) edge_from(i int) *Point { return &(*idx.edges)[i].v1 }
+func (idx *EdgeVectorIndex) edge_to(i int) *Point   { return &(*idx.edges)[i].v0 }
+func (idx *EdgeVectorIndex) IncrementQueryCount()   { idx.EdgeIndex.IncrementQueryCount() }
 
 func EdgesToString(a, b Edge) string {
 	_, u1, v1 := xyzToFaceUV(a.v0.Vector)
@@ -111,16 +111,6 @@ func TestRandomEdgeCrossings(t *testing.T) {
 	CheckCrossingsRandomInCap(t, 500, 5000, 5000, 5000, 20)
 }
 
-func BenchmarkComputeIndex(b *testing.B) {
-	var allEdges []Edge
-	GenerateRandomEarthEdges(100, 5000, 2000, &allEdges)
-	idx := EdgeVectorIndex{NewEdgeIndex(), &allEdges}
-	for i := 0; i < b.N; i++ {
-		ComputeIndex(&idx)
-		idx.Reset()
-	}
-}
-
 func TestRandomEdgeCrossingsSparse(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		CheckCrossingsRandomInCap(t, 2000, 100, 5000, 500, 8)
@@ -185,5 +175,15 @@ func TestCollinearEdgesOnCellBoundaries(t *testing.T) {
 		}
 		CheckAllCrossings(t, allEdges, numPointsOnEdge*numPointsOnEdge,
 			numPointsOnEdge*numPointsOnEdge)
+	}
+}
+
+func BenchmarkQuadTreeInsertionCost(b *testing.B) {
+	const numVerts int = 1000
+	loopCenter := makepoint("42:107")
+	loop := makeRegularLoop(loopCenter, numVerts, 7e-3)
+	for i := 0; i < b.N; i++ {
+		index := NewLoopIndex(loop)
+		ComputeIndex(index)
 	}
 }
