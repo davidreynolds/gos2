@@ -359,7 +359,7 @@ func (it *EdgeIndexIterator) GetCandidates(a, b Point) {
 }
 
 // Index of the current loop in the iteration.
-func (it EdgeIndexIterator) Index() int { return it.current }
+func (it *EdgeIndexIterator) Index() int { return it.current }
 
 // Iterate to the next available candidate.
 func (it *EdgeIndexIterator) Next() {
@@ -374,7 +374,7 @@ func (it *EdgeIndexIterator) Next() {
 }
 
 // True if there are no more candidates.
-func (it EdgeIndexIterator) Done() bool {
+func (it *EdgeIndexIterator) Done() bool {
 	if it.is_brute_force {
 		return it.current >= it.num_edges
 	} else {
