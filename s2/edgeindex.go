@@ -117,8 +117,8 @@ func (idx *EdgeIndex) Sort()                          { sort.Sort(idx.mapping) }
 // the natural ordering of CellIDs.
 func FindCandidateCrossings(idx EdgeIndexer, a, b Point, candidate_crossings *[]int) {
 	cover, _ := GetCovering(idx, a, b, false)
-	EdgesInParentCells(idx, cover, idx.Mapping(), idx.MinLevelUsed(), candidate_crossings)
-	EdgesInChildrenCells(idx, a, b, &cover, idx.Mapping(), candidate_crossings)
+	EdgesInParentCells(idx, cover, idx.MinLevelUsed(), candidate_crossings)
+	EdgesInChildrenCells(idx, a, b, &cover, candidate_crossings)
 	uniq := make(map[int]struct{})
 	for _, c := range *candidate_crossings {
 		uniq[c] = struct{}{}
@@ -129,8 +129,9 @@ func FindCandidateCrossings(idx EdgeIndexer, a, b Point, candidate_crossings *[]
 	}
 }
 
-func EdgesInParentCells(idx EdgeIndexer, cover []CellID, mapping *CellEdgeMultimap, min_level_used int, candidate_crossings *[]int) {
+func EdgesInParentCells(idx EdgeIndexer, cover []CellID, min_level_used int, candidate_crossings *[]int) {
 	// Find all parent cells of covering cells.
+	mapping := idx.Mapping()
 	parent_cells := make(map[CellID]struct{})
 	for _, cid := range cover {
 		for parentLevel := cid.Level() - 1; parentLevel >= min_level_used; parentLevel-- {
@@ -151,7 +152,8 @@ func EdgesInParentCells(idx EdgeIndexer, cover []CellID, mapping *CellEdgeMultim
 	}
 }
 
-func EdgesInChildrenCells(idx EdgeIndexer, a, b Point, cover *[]CellID, mapping *CellEdgeMultimap, candidate_crossings *[]int) {
+func EdgesInChildrenCells(idx EdgeIndexer, a, b Point, cover *[]CellID, candidate_crossings *[]int) {
+	mapping := idx.Mapping()
 	num_cells := 0
 
 	// Put all the edge references of (covering cells + descendant cells)

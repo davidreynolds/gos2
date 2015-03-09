@@ -203,7 +203,7 @@ func TestAreaAndCentroid(t *testing.T) {
 		phi := math.Asin(1 - height)
 		max_dtheta := 2 * math.Acos(math.Tan(math.Abs(phi))/math.Tan(math.Abs(phi)+kMaxDist))
 		max_dtheta = math.Min(math.Pi, max_dtheta)
-		vertices := []Point{}
+		var vertices []Point
 		for theta := 0.0; theta < 2*math.Pi; theta += rand.Float64() * max_dtheta {
 			a := x.Mul(math.Cos(theta) * math.Cos(phi))
 			b := y.Mul(math.Sin(theta) * math.Cos(phi))
@@ -643,7 +643,7 @@ func TestQuadtreeGetsComputedAutomatically(t *testing.T) {
 
 func makeRegularLoop(center Point, numVerts int, angleRadius float64) *Loop {
 	m := FrameFromPoint(center)
-	vertices := []Point{}
+	var vertices []Point
 	radianStep := 2 * math.Pi / float64(numVerts)
 	planarRadius := math.Tan(angleRadius)
 	for vi := 0; vi < numVerts; vi++ {

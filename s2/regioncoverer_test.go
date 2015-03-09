@@ -211,3 +211,25 @@ func TestRandomCells(t *testing.T) {
 		}
 	}
 }
+
+func benchmarkCovering(b *testing.B, maxCells, numVerts int) {
+	b.StopTimer()
+	coverer := NewRegionCoverer()
+	coverer.SetMaxCells(maxCells)
+	for i := 0; i < b.N; i++ {
+		center := randomPoint()
+		loop := makeRegularLoop(center, numVerts, 0.005)
+		b.StartTimer()
+		coverer.Covering(loop)
+		b.StopTimer()
+	}
+}
+
+func BenchmarkCovering0(b *testing.B) { benchmarkCovering(b, 8, 1<<10) }
+func BenchmarkCovering1(b *testing.B) { benchmarkCovering(b, 8, 1<<11) }
+func BenchmarkCovering2(b *testing.B) { benchmarkCovering(b, 8, 1<<12) }
+func BenchmarkCovering3(b *testing.B) { benchmarkCovering(b, 8, 1<<13) }
+func BenchmarkCovering4(b *testing.B) { benchmarkCovering(b, 8, 1<<14) }
+func BenchmarkCovering5(b *testing.B) { benchmarkCovering(b, 8, 1<<15) }
+func BenchmarkCovering6(b *testing.B) { benchmarkCovering(b, 8, 1<<16) }
+func BenchmarkCovering7(b *testing.B) { benchmarkCovering(b, 8, 1<<17) }

@@ -3,10 +3,12 @@ package s2
 import (
 	"fmt"
 	"log"
+	"math"
 	"math/rand"
 	"strings"
 	"testing"
 
+	"github.com/davidreynolds/gos2/r3"
 	"github.com/davidreynolds/gos2/s1"
 )
 
@@ -652,3 +654,73 @@ func choosePiece(pieces *[]*Polygon) *Polygon {
 	*pieces = append((*pieces)[:i], (*pieces)[i+1:]...)
 	return res
 }
+
+func concentricLoops(center Point, numLoops, numVertsPerLoop int, poly *Polygon) {
+	m := FrameFromPoint(center)
+	var loops []*Loop
+	for i := 0; i < numLoops; i++ {
+		var vertices []Point
+		radius := 0.005 * float64((i+1)/numLoops)
+		radianStep := 2 * math.Pi / float64(numVertsPerLoop)
+		for j := 0; j < numVertsPerLoop; j++ {
+			angle := float64(j) * radianStep
+			p := PointFromCoords(radius*math.Cos(angle), radius*math.Sin(angle), 1)
+			vertices = append(vertices, PointFromFrame(m, p))
+		}
+		loops = append(loops, NewLoopFromPath(vertices))
+	}
+	poly.Init(&loops)
+}
+
+func unionOfPolygons(b *testing.B, numVertsPerLoop int, offset float64) {
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		var p1, p2 Polygon
+		center := randomPoint()
+		concentricLoops(center, 10, numVertsPerLoop, &p1)
+		center2 := PointFromCoords(offset, offset, offset)
+		concentricLoops(Point{center.Add(r3.Vector{center2.X, center2.Y, center2.Z}).Normalize()}, 10, numVertsPerLoop, &p2)
+		b.StartTimer()
+		var p3 Polygon
+		p3.InitToUnion(&p1, &p2)
+	}
+}
+
+func benchmarkDeepPolygonUnion(b *testing.B, numVertsPerLoop int) {
+	unionOfPolygons(b, numVertsPerLoop, 0.000001)
+}
+
+func benchmarkShallowPolygonUnion(b *testing.B, numVertsPerLoop int) {
+	unionOfPolygons(b, numVertsPerLoop, 0.004)
+}
+
+func benchmarkDisjointPolygonUnion(b *testing.B, numVertsPerLoop int) {
+	unionOfPolygons(b, numVertsPerLoop, 0.3)
+}
+
+func BenchmarkDeepPolygonUnion8(b *testing.B)    { benchmarkDeepPolygonUnion(b, 8) }
+func BenchmarkDeepPolygonUnion64(b *testing.B)   { benchmarkDeepPolygonUnion(b, 64) }
+func BenchmarkDeepPolygonUnion128(b *testing.B)  { benchmarkDeepPolygonUnion(b, 128) }
+func BenchmarkDeepPolygonUnion256(b *testing.B)  { benchmarkDeepPolygonUnion(b, 256) }
+func BenchmarkDeepPolygonUnion512(b *testing.B)  { benchmarkDeepPolygonUnion(b, 512) }
+func BenchmarkDeepPolygonUnion1024(b *testing.B) { benchmarkDeepPolygonUnion(b, 1024) }
+func BenchmarkDeepPolygonUnion4096(b *testing.B) { benchmarkDeepPolygonUnion(b, 4096) }
+func BenchmarkDeepPolygonUnion8192(b *testing.B) { benchmarkDeepPolygonUnion(b, 8192) }
+
+func BenchmarkShallowPolygonUnion8(b *testing.B)    { benchmarkShallowPolygonUnion(b, 8) }
+func BenchmarkShallowPolygonUnion64(b *testing.B)   { benchmarkShallowPolygonUnion(b, 64) }
+func BenchmarkShallowPolygonUnion128(b *testing.B)  { benchmarkShallowPolygonUnion(b, 128) }
+func BenchmarkShallowPolygonUnion256(b *testing.B)  { benchmarkShallowPolygonUnion(b, 256) }
+func BenchmarkShallowPolygonUnion512(b *testing.B)  { benchmarkShallowPolygonUnion(b, 512) }
+func BenchmarkShallowPolygonUnion1024(b *testing.B) { benchmarkShallowPolygonUnion(b, 1024) }
+func BenchmarkShallowPolygonUnion4096(b *testing.B) { benchmarkShallowPolygonUnion(b, 4096) }
+func BenchmarkShallowPolygonUnion8192(b *testing.B) { benchmarkShallowPolygonUnion(b, 8192) }
+
+func BenchmarkDisjointPolygonUnion8(b *testing.B)    { benchmarkDisjointPolygonUnion(b, 8) }
+func BenchmarkDisjointPolygonUnion64(b *testing.B)   { benchmarkDisjointPolygonUnion(b, 64) }
+func BenchmarkDisjointPolygonUnion128(b *testing.B)  { benchmarkDisjointPolygonUnion(b, 128) }
+func BenchmarkDisjointPolygonUnion256(b *testing.B)  { benchmarkDisjointPolygonUnion(b, 256) }
+func BenchmarkDisjointPolygonUnion512(b *testing.B)  { benchmarkDisjointPolygonUnion(b, 512) }
+func BenchmarkDisjointPolygonUnion1024(b *testing.B) { benchmarkDisjointPolygonUnion(b, 1024) }
+func BenchmarkDisjointPolygonUnion4096(b *testing.B) { benchmarkDisjointPolygonUnion(b, 4096) }
+func BenchmarkDisjointPolygonUnion8192(b *testing.B) { benchmarkDisjointPolygonUnion(b, 8192) }

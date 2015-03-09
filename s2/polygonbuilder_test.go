@@ -70,6 +70,7 @@ func TestSingleLoop(t *testing.T) {
 }
 
 func BenchmarkBuilder(b *testing.B) {
+	b.StopTimer()
 	test := TestCase{-1, 0, true, 0.0, 0.9, 30.0, // Directed edges required for unique result.
 		[]Chain{
 			Chain{"0:0, 0:2, 0:4, 0:6, 1:5, 2:4, 3:3, 2:2, 1:1", true},
@@ -97,6 +98,7 @@ func BenchmarkBuilder(b *testing.B) {
 			builder.AddEdge(vertices[i-1], vertices[i])
 		}
 	}
+	b.StartTimer()
 	var poly Polygon
 	for i := 0; i < b.N; i++ {
 		builder.AssemblePolygon(&poly, nil)
