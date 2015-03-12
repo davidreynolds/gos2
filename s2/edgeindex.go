@@ -69,11 +69,9 @@ type EdgeIndexer interface {
 	IndexComputed() bool
 	SetIndexComputed(b bool)
 	Reset()
-	MappingInsert(id CellID, k int)
 	Mapping() *CellEdgeMultimap
 	Sort()
-	edge_from(i int) *Point
-	edge_to(i int) *Point
+	EdgeFromTo(i int) (*Point, *Point)
 }
 
 type EdgeIndex struct {
@@ -85,10 +83,8 @@ type EdgeIndex struct {
 
 func NewEdgeIndex() *EdgeIndex {
 	return &EdgeIndex{
-		indexComputed: false,
-		queryCount:    0,
-		minLevelUsed:  maxLevel,
-		mapping:       NewCellEdgeMultimap(),
+		minLevelUsed: maxLevel,
+		mapping:      NewCellEdgeMultimap(),
 	}
 }
 
@@ -99,16 +95,15 @@ func (idx *EdgeIndex) Reset() {
 	idx.mapping = NewCellEdgeMultimap()
 }
 
-func (idx *EdgeIndex) QueryCount() int                { return idx.queryCount }
-func (idx *EdgeIndex) SetQueryCount(n int)            { idx.queryCount = n }
-func (idx *EdgeIndex) IncrementQueryCount()           { idx.queryCount++ }
-func (idx *EdgeIndex) MinLevelUsed() int              { return idx.minLevelUsed }
-func (idx *EdgeIndex) SetMinLevelUsed(level int)      { idx.minLevelUsed = level }
-func (idx *EdgeIndex) IndexComputed() bool            { return idx.indexComputed }
-func (idx *EdgeIndex) SetIndexComputed(b bool)        { idx.indexComputed = b }
-func (idx *EdgeIndex) MappingInsert(id CellID, k int) { idx.mapping.Insert(CellEdge{id, k}) }
-func (idx *EdgeIndex) Mapping() *CellEdgeMultimap     { return idx.mapping }
-func (idx *EdgeIndex) Sort()                          { sort.Sort(idx.mapping) }
+func (idx *EdgeIndex) QueryCount() int            { return idx.queryCount }
+func (idx *EdgeIndex) SetQueryCount(n int)        { idx.queryCount = n }
+func (idx *EdgeIndex) IncrementQueryCount()       { idx.queryCount++ }
+func (idx *EdgeIndex) MinLevelUsed() int          { return idx.minLevelUsed }
+func (idx *EdgeIndex) SetMinLevelUsed(level int)  { idx.minLevelUsed = level }
+func (idx *EdgeIndex) IndexComputed() bool        { return idx.indexComputed }
+func (idx *EdgeIndex) SetIndexComputed(b bool)    { idx.indexComputed = b }
+func (idx *EdgeIndex) Mapping() *CellEdgeMultimap { return idx.mapping }
+func (idx *EdgeIndex) Sort()                      { sort.Sort(idx.mapping) }
 
 // Appends to "candidate_crossings" all edge references which may cross the
 // given edge. This is done by covering the edge and then finding all references
@@ -116,14 +111,15 @@ func (idx *EdgeIndex) Sort()                          { sort.Sort(idx.mapping) }
 // level by level. Child cells are checked all at once by taking advantage of
 // the natural ordering of CellIDs.
 func FindCandidateCrossings(idx EdgeIndexer, a, b Point, candidate_crossings *[]int) {
-	cover, _ := GetCovering(idx, a, b, false)
+	var cover []CellID
+	EdgeCovering(a, b, false, &cover)
 	EdgesInParentCells(idx, cover, idx.MinLevelUsed(), candidate_crossings)
 	EdgesInChildrenCells(idx, a, b, &cover, candidate_crossings)
 	uniq := make(map[int]struct{})
 	for _, c := range *candidate_crossings {
 		uniq[c] = struct{}{}
 	}
-	*candidate_crossings = []int{}
+	*candidate_crossings = (*candidate_crossings)[:0]
 	for k, _ := range uniq {
 		*candidate_crossings = append(*candidate_crossings, k)
 	}
@@ -146,7 +142,7 @@ func EdgesInParentCells(idx EdgeIndexer, cover []CellID, min_level_used int, can
 	// Put parent cell edge references into result.
 	for pi, _ := range parent_cells {
 		start := mapping.LowerBound(pi)
-		for i := start; i != mapping.Len() && mapping.items[i].cellId == pi; i++ {
+		for i := start; i != mapping.Len() && CellID(mapping.items[i].cellId) == pi; i++ {
 			*candidate_crossings = append(*candidate_crossings, mapping.items[i].edgeId)
 		}
 	}
@@ -155,6 +151,7 @@ func EdgesInParentCells(idx EdgeIndexer, cover []CellID, min_level_used int, can
 func EdgesInChildrenCells(idx EdgeIndexer, a, b Point, cover *[]CellID, candidate_crossings *[]int) {
 	mapping := idx.Mapping()
 	num_cells := 0
+	var it, start, end int
 
 	// Put all the edge references of (covering cells + descendant cells)
 	// into result. This relies on the natural ordering of CellIDs.
@@ -164,14 +161,14 @@ func EdgesInChildrenCells(idx EdgeIndexer, a, b Point, cover *[]CellID, candidat
 		*cover = (*cover)[:back]
 		num_cells++
 
-		start := mapping.LowerBound(cell.RangeMin())
-		end := mapping.UpperBound(cell.RangeMax())
+		start = mapping.LowerBound(cell.RangeMin())
+		end = mapping.UpperBound(cell.RangeMax())
 
 		rewind := alwaysRecurseOnChildren
 		num_edges := 0
 		if !rewind {
-			for i := start; i < mapping.Len() && i != end; i++ {
-				*candidate_crossings = append(*candidate_crossings, mapping.items[i].edgeId)
+			for it = start; it < mapping.Len() && it != end; it++ {
+				*candidate_crossings = append(*candidate_crossings, mapping.items[it].edgeId)
 				num_edges++
 				if num_edges == 16 && !cell.IsLeaf() {
 					rewind = true
@@ -182,20 +179,18 @@ func EdgesInChildrenCells(idx EdgeIndexer, a, b Point, cover *[]CellID, candidat
 
 		// If there were too many to insert, uninsert and recurse.
 		if rewind {
-			for i := 0; i < num_edges; i++ {
-				back := len(*candidate_crossings) - 1
-				*candidate_crossings = (*candidate_crossings)[:back]
-			}
+			size := len(*candidate_crossings)
+			*candidate_crossings = (*candidate_crossings)[:size-num_edges]
 
 			i := mapping.LowerBound(cell)
-			j := i
-			for ; j != mapping.Len() && mapping.items[j].cellId == cell; j++ {
-				*candidate_crossings = append(*candidate_crossings, mapping.items[j].edgeId)
+			j := mapping.UpperBound(cell)
+			for it = i; it < mapping.Len() && it != j; it++ {
+				*candidate_crossings = append(*candidate_crossings, mapping.items[it].edgeId)
 			}
 
 			// Recurse on the children -- hopefully some will be empty.
 			if i != start || j != end {
-				children := [4]Cell{}
+				children := make([]Cell, 0, 4)
 				c := CellFromCellID(cell)
 				c.Subdivide(&children)
 				for _, child := range children {
@@ -209,11 +204,13 @@ func EdgesInChildrenCells(idx EdgeIndexer, a, b Point, cover *[]CellID, candidat
 }
 
 func ComputeIndex(idx EdgeIndexer) {
+	var cover []CellID
 	for i := 0; i < idx.NumEdges(); i++ {
-		cover, level := GetCovering(idx, *idx.edge_from(i), *idx.edge_to(i), true)
+		from, to := idx.EdgeFromTo(i)
+		level := EdgeCovering(*from, *to, true, &cover)
 		idx.SetMinLevelUsed(min(idx.MinLevelUsed(), level))
 		for _, cid := range cover {
-			idx.MappingInsert(cid, i)
+			idx.Mapping().Insert(CellEdge{cid, i})
 		}
 	}
 	idx.Sort()
@@ -254,11 +251,11 @@ func containingCell2(pa, pb Point) CellID {
 	return a
 }
 
-func GetCovering(idx EdgeIndexer, a, b Point, thicken_edge bool) ([]CellID, int) {
-	covering := []CellID{}
+func EdgeCovering(a, b Point, thicken_edge bool, covering *[]CellID) int {
+	*covering = (*covering)[:0]
 	// Thicken the edge in all directions by roughly 1% of the edge length
 	// when thicken_edge is true.
-	thickening := 0.01
+	const thickening float64 = 0.01
 
 	// Selects the ideal S2 level at which to cover the edge, this will be
 	// the level whose S2 cells have a width roughly commensurate to the
@@ -283,15 +280,19 @@ func GetCovering(idx EdgeIndexer, a, b Point, thicken_edge bool) ([]CellID, int)
 			ortho := pq.Cross(a.Vector).Normalize().Mul(edge_length * thickening)
 			p := a.Sub(pq)
 			q := b.Add(pq)
-			containing_cell = containingCell4(Point{p.Sub(ortho)}, Point{p.Add(ortho)},
-				Point{q.Sub(ortho)}, Point{q.Add(ortho)})
+			containing_cell = containingCell4(
+				Point{p.Sub(ortho)},
+				Point{p.Add(ortho)},
+				Point{q.Sub(ortho)},
+				Point{q.Add(ortho)},
+			)
 		}
 	}
 
 	// Best case: edge is fully contained in a cell that's not too big.
 	if containing_cell != Sentinel() && containing_cell.Level() >= ideal_level-2 {
-		covering = append(covering, containing_cell)
-		return covering, containing_cell.Level()
+		*covering = append(*covering, containing_cell)
+		return containing_cell.Level()
 	}
 
 	if ideal_level == 0 {
@@ -299,9 +300,9 @@ func GetCovering(idx EdgeIndexer, a, b Point, thicken_edge bool) ([]CellID, int)
 		// the trick below doesn't work. For now, we will add the whole
 		// S2 sphere.
 		for cid := CellIDBegin(0); cid != CellIDEnd(0); cid = cid.Next() {
-			covering = append(covering, cid)
+			*covering = append(*covering, cid)
 		}
-		return covering, 0
+		return 0
 	}
 
 	// Cover the edge by a cap centered on the edge midpoint, then cover
@@ -309,8 +310,8 @@ func GetCovering(idx EdgeIndexer, a, b Point, thicken_edge bool) ([]CellID, int)
 	// the cap center.
 	middle := Point{a.Add(b.Vector).Mul(0.5).Normalize()}
 	actual_level := min(ideal_level, maxLevel-1)
-	cellIDFromPoint(middle).AppendVertexNeighbors(actual_level, &covering)
-	return covering, actual_level
+	cellIDFromPoint(middle).AppendVertexNeighbors(actual_level, covering)
+	return actual_level
 }
 
 func PredictAdditionalCalls(idx EdgeIndexer, n int) {
@@ -351,7 +352,7 @@ func (it *EdgeIndexIterator) GetCandidates(a, b Point) {
 		it.current = 0
 		it.num_edges = it.index.NumEdges()
 	} else {
-		it.candidates = []int{}
+		it.candidates = it.candidates[:0]
 		FindCandidateCrossings(it.index, a, b, &it.candidates)
 		it.current_index_in_candidates = 0
 		if len(it.candidates) != 0 {

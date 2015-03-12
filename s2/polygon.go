@@ -1,7 +1,7 @@
 package s2
 
 import (
-	"log"
+	"container/heap"
 	"sort"
 
 	"github.com/davidreynolds/gos2/s1"
@@ -16,7 +16,7 @@ type Polygon struct {
 	numVertices int
 }
 
-func NewPolygonFromLoops(loops *[]*Loop) *Polygon {
+func NewPolygonFromLoops(loops []*Loop) *Polygon {
 	p := &Polygon{
 		bound:    EmptyRect(),
 		hasHoles: false,
@@ -27,7 +27,6 @@ func NewPolygonFromLoops(loops *[]*Loop) *Polygon {
 
 func NewPolygonFromLoop(loop *Loop) *Polygon {
 	p := &Polygon{
-		loops:       []*Loop{},
 		bound:       loop.Bound(),
 		hasHoles:    false,
 		numVertices: len(loop.vertices),
@@ -38,7 +37,6 @@ func NewPolygonFromLoop(loop *Loop) *Polygon {
 
 func NewPolygonFromCell(cell Cell) *Polygon {
 	p := &Polygon{
-		loops:       []*Loop{},
 		bound:       EmptyRect(),
 		numVertices: 4,
 	}
@@ -64,9 +62,9 @@ func ContainsChild(a, b *Loop, loopMap LoopMap) bool {
 func (p *Polygon) NumLoops() int    { return len(p.loops) }
 func (p *Polygon) Loop(k int) *Loop { return p.loops[k] }
 
-func (p *Polygon) Init(loops *[]*Loop) {
-	p.loops = make([]*Loop, len(*loops))
-	copy(p.loops, *loops)
+func (p *Polygon) Init(loops []*Loop) {
+	p.loops = make([]*Loop, len(loops))
+	copy(p.loops, loops)
 	for _, loop := range p.loops {
 		p.numVertices += len(loop.vertices)
 	}
@@ -77,7 +75,7 @@ func (p *Polygon) Init(loops *[]*Loop) {
 	}
 
 	// Reorder the loops in depth-first order.
-	p.loops = []*Loop{}
+	p.loops = p.loops[:0]
 	p.InitLoop(nil, -1, loopMap)
 
 	p.hasHoles = false
@@ -318,7 +316,7 @@ func AreLoopsValid(loops []*Loop) bool {
 	// If a loop contains an edge AB, then no other loop may contain
 	// AB or BA.
 	if len(loops) > 1 {
-		edges := map[PointPair]IntPair{}
+		edges := make(map[PointPair]IntPair)
 		for i, loop := range loops {
 			for j := 0; j < len(loop.vertices); j++ {
 				key := PointPair{*loop.vertex(j), *loop.vertex(j + 1)}
@@ -363,7 +361,7 @@ func (p *Polygon) Parent(k int) int {
 
 func (p *Polygon) IsNormalized() bool {
 	var lastParent *Loop
-	vertices := map[Point]bool{}
+	vertices := make(map[Point]struct{})
 	for i := 0; i < p.NumLoops(); i++ {
 		child := p.Loop(i)
 		if child.depth == 0 {
@@ -371,9 +369,9 @@ func (p *Polygon) IsNormalized() bool {
 		}
 		parent := p.Loop(p.Parent(i))
 		if parent != lastParent {
-			vertices = map[Point]bool{}
+			vertices = make(map[Point]struct{})
 			for j := 0; j < parent.NumVertices(); j++ {
-				vertices[*parent.vertex(j)] = true
+				vertices[*parent.vertex(j)] = struct{}{}
 			}
 			lastParent = parent
 		}
@@ -410,7 +408,7 @@ func (p *Polygon) InitToIntersectionSloppy(a, b *Polygon, vertexMergeRadius s1.A
 	ClipBoundary(a, false, b, false, false, true, &builder)
 	ClipBoundary(b, false, a, false, false, false, &builder)
 	if !builder.AssemblePolygon(p, nil) {
-		log.Fatalf("Bad directed edges in InitToIntersection")
+		panic("Bad directed edges in InitToIntersection")
 	}
 }
 
@@ -428,7 +426,7 @@ func (p *Polygon) InitToUnionSloppy(a, b *Polygon, vertexMergeRadius s1.Angle) {
 	ClipBoundary(a, false, b, false, true, true, &builder)
 	ClipBoundary(b, false, a, false, true, false, &builder)
 	if !builder.AssemblePolygon(p, nil) {
-		log.Fatalf("Bad directed edges in InitToUnion")
+		panic("Bad directed edges in InitToUnion")
 	}
 }
 
@@ -446,7 +444,7 @@ func (p *Polygon) InitToDifferenceSloppy(a, b *Polygon, vertexMergeRadius s1.Ang
 	ClipBoundary(a, false, b, true, true, true, &builder)
 	ClipBoundary(b, true, a, false, false, false, &builder)
 	if !builder.AssemblePolygon(p, nil) {
-		log.Fatalf("Bad directed edges in InitToDifference")
+		panic("Bad directed edges in InitToDifference")
 	}
 }
 
@@ -535,49 +533,62 @@ func DestructiveUnion(polygons *[]*Polygon) *Polygon {
 }
 
 func DestructiveUnionSloppy(polygons *[]*Polygon, vertexMergeRadius s1.Angle) *Polygon {
-	// Effectively create a priority queue of polygons in order of number
-	// of vertices. Repeatedly union the two smallest polygons and add
-	// the result to the queue until we have a single polygon to return.
-	var queue IntPolygonQueue
+	// Create a priority queue of polygons in order of number of vertices.
+	// Repeatedly union the two smallest polygons and add the result to the
+	// queue until we have a single polygon to return.
+	pq := make(IntPolygonQueue, len(*polygons))
 	for i := 0; i < len(*polygons); i++ {
-		queue.Insert(IntPolygonPair{(*polygons)[i].numVertices, (*polygons)[i]})
+		pq[i] = &IntPolygonPair{
+			size: (*polygons)[i].numVertices,
+			poly: (*polygons)[i],
+		}
 	}
+	heap.Init(&pq)
 	*polygons = []*Polygon{}
-	for queue.Len() > 1 {
+	for pq.Len() > 1 {
 		// Pop two simplest polygons from queue.
-		a := queue.PopFront()
-		b := queue.PopFront()
+		a := heap.Pop(&pq).(*IntPolygonPair)
+		b := heap.Pop(&pq).(*IntPolygonPair)
 		// Union and add result back to queue.
-		var cUnion Polygon
-		cUnion.InitToUnionSloppy(a.poly, b.poly, vertexMergeRadius)
-		queue.Insert(IntPolygonPair{a.size + b.size, &cUnion})
+		var c Polygon
+		c.InitToUnionSloppy(a.poly, b.poly, vertexMergeRadius)
+		heap.Push(&pq, &IntPolygonPair{
+			size: a.size + b.size,
+			poly: &c,
+		})
 	}
-	if queue.Len() == 0 {
+	if pq.Len() == 0 {
 		return &Polygon{}
 	}
-	return queue.PopFront().poly
+	return heap.Pop(&pq).(*IntPolygonPair).poly
 }
 
 type IntPolygonPair struct {
 	size int
 	poly *Polygon
+	idx  int
 }
 
-type IntPolygonQueue []IntPolygonPair
+type IntPolygonQueue []*IntPolygonPair
 
 func (p IntPolygonQueue) Len() int           { return len(p) }
 func (p IntPolygonQueue) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 func (p IntPolygonQueue) Less(i, j int) bool { return p[i].size < p[j].size }
 
-func (p *IntPolygonQueue) Insert(pair IntPolygonPair) {
+func (p *IntPolygonQueue) Push(x interface{}) {
+	n := len(*p)
+	pair := x.(*IntPolygonPair)
+	pair.idx = n
 	*p = append(*p, pair)
-	sort.Sort(p)
 }
 
-func (p *IntPolygonQueue) PopFront() IntPolygonPair {
-	front := (*p)[0]
-	*p = (*p)[1:]
-	return front
+func (p *IntPolygonQueue) Pop() interface{} {
+	old := *p
+	n := len(old)
+	pair := old[n-1]
+	pair.idx = -1
+	*p = old[0 : n-1]
+	return pair
 }
 
 func (a *Polygon) BoundaryApproxEquals(b *Polygon, maxError float64) bool {
@@ -750,7 +761,6 @@ func (idx LoopSequenceIndex) DecodeIndex(i int) (loopIndex, vertexInLoop int) {
 	return
 }
 
-// TODO: interface EdgeIndex because it's used everywhere.
 type PolygonIndex struct {
 	LoopSequenceIndex
 	poly    *Polygon
@@ -771,15 +781,6 @@ func (idx *PolygonIndex) EdgeFromTo(i int) (from *Point, to *Point) {
 	from = loop.vertex(fromIdx)
 	to = loop.vertex(toIdx)
 	return
-}
-
-func (idx *PolygonIndex) edge_from(i int) *Point {
-	from, _ := idx.EdgeFromTo(i)
-	return from
-}
-func (idx *PolygonIndex) edge_to(i int) *Point {
-	_, to := idx.EdgeFromTo(i)
-	return to
 }
 
 func NewPolygonIndex(poly *Polygon, reverse bool) *PolygonIndex {

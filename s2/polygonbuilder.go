@@ -557,7 +557,7 @@ func (b *PolygonBuilder) AssemblePolygon(polygon *Polygon, unusedEdges *[]Edge) 
 		}
 		return false
 	}
-	polygon.Init(&loops)
+	polygon.Init(loops)
 	return success
 }
 

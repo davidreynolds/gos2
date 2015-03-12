@@ -2,7 +2,6 @@ package s2
 
 import (
 	"fmt"
-	//	"log"
 	"math/rand"
 	"testing"
 
@@ -14,10 +13,11 @@ type EdgeVectorIndex struct {
 	edges *[]Edge
 }
 
-func (idx *EdgeVectorIndex) NumEdges() int          { return len(*idx.edges) }
-func (idx *EdgeVectorIndex) edge_from(i int) *Point { return &(*idx.edges)[i].v1 }
-func (idx *EdgeVectorIndex) edge_to(i int) *Point   { return &(*idx.edges)[i].v0 }
-func (idx *EdgeVectorIndex) IncrementQueryCount()   { idx.EdgeIndex.IncrementQueryCount() }
+func (idx *EdgeVectorIndex) NumEdges() int        { return len(*idx.edges) }
+func (idx *EdgeVectorIndex) IncrementQueryCount() { idx.EdgeIndex.IncrementQueryCount() }
+func (idx *EdgeVectorIndex) EdgeFromTo(i int) (*Point, *Point) {
+	return &(*idx.edges)[i].v1, &(*idx.edges)[i].v0
+}
 
 func EdgesToString(a, b Edge) string {
 	_, u1, v1 := xyzToFaceUV(a.v0.Vector)
@@ -211,7 +211,7 @@ func TestCollinearEdgesOnCellBoundaries(t *testing.T) {
 		v2 := (v1 + 1) & 3
 		p1 := cell.Vertex(v1)
 		p2 := cell.Vertex(v2)
-		p2_p1 := Point{p2.Sub(p1.Vector).Mul(1 / numPointsOnEdge)}
+		p2_p1 := Point{p2.Sub(p1.Vector).Mul(1. / numPointsOnEdge)}
 		var allEdges []Edge
 		points := make([]Point, numPointsOnEdge+1)
 		for i := 0; i <= numPointsOnEdge; i++ {
@@ -222,6 +222,22 @@ func TestCollinearEdgesOnCellBoundaries(t *testing.T) {
 		}
 		CheckAllCrossings(t, allEdges, numPointsOnEdge*numPointsOnEdge,
 			numPointsOnEdge*numPointsOnEdge)
+	}
+}
+
+func BenchmarkEdgeCovering(b *testing.B) {
+	b.StopTimer()
+	const numVerts int = 1000
+	loopCenter := makepoint("42:107")
+	loop := makeRegularLoop(loopCenter, numVerts, 7e-3)
+	var cover []CellID
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		idx := NewLoopIndex(loop)
+		for j := 0; j < idx.NumEdges(); j++ {
+			from, to := idx.EdgeFromTo(j)
+			EdgeCovering(*from, *to, true, &cover)
+		}
 	}
 }
 
@@ -251,7 +267,8 @@ func benchmarkQuadTreeFindCost(b *testing.B, numVerts int) {
 	}
 }
 
-func BenchmarkQuadTreeFindCost10(b *testing.B)    { benchmarkQuadTreeFindCost(b, 10) }
-func BenchmarkQuadTreeFindCost100(b *testing.B)   { benchmarkQuadTreeFindCost(b, 100) }
-func BenchmarkQuadTreeFindCost1000(b *testing.B)  { benchmarkQuadTreeFindCost(b, 1000) }
-func BenchmarkQuadTreeFindCost10000(b *testing.B) { benchmarkQuadTreeFindCost(b, 10000) }
+func BenchmarkQuadTreeFindCost10(b *testing.B)     { benchmarkQuadTreeFindCost(b, 10) }
+func BenchmarkQuadTreeFindCost100(b *testing.B)    { benchmarkQuadTreeFindCost(b, 100) }
+func BenchmarkQuadTreeFindCost1000(b *testing.B)   { benchmarkQuadTreeFindCost(b, 1000) }
+func BenchmarkQuadTreeFindCost10000(b *testing.B)  { benchmarkQuadTreeFindCost(b, 10000) }
+func BenchmarkQuadTreeFindCost100000(b *testing.B) { benchmarkQuadTreeFindCost(b, 100000) }

@@ -20,12 +20,8 @@ func NewLoopIndex(loop *Loop) *LoopIndex {
 	}
 }
 
-func (idx *LoopIndex) edge_from(i int) *Point {
-	return idx.loop.vertex(i)
-}
-
-func (idx *LoopIndex) edge_to(i int) *Point {
-	return idx.loop.vertex(i + 1)
+func (idx *LoopIndex) EdgeFromTo(i int) (*Point, *Point) {
+	return idx.loop.vertex(i), idx.loop.vertex(i + 1)
 }
 
 func (idx *LoopIndex) NumEdges() int {

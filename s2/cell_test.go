@@ -107,7 +107,7 @@ func DoSubdivide(t *testing.T, cell Cell) {
 	if cell.IsLeaf() {
 		return
 	}
-	children := [4]Cell{}
+	children := make([]Cell, 0, 4)
 	if !cell.Subdivide(&children) {
 		t.Errorf("cell.Subdivide failed")
 	}

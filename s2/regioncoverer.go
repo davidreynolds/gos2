@@ -97,7 +97,7 @@ func (r *RegionCoverer) NewCandidate(cell Cell) *Candidate {
 
 func (r *RegionCoverer) ExpandChildren(candidate *Candidate, cell Cell, numLevels int) int {
 	numLevels--
-	childCells := [4]Cell{}
+	childCells := make([]Cell, 0, 4)
 	cell.Subdivide(&childCells)
 	numTerminals := 0
 	for _, c := range childCells {

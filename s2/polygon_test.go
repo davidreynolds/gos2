@@ -14,7 +14,7 @@ import (
 
 func makepolygon(s string) *Polygon {
 	loops := makeloops(s)
-	return NewPolygonFromLoops(&loops)
+	return NewPolygonFromLoops(loops)
 }
 
 func makeloops(s string) []*Loop {
@@ -233,7 +233,7 @@ var benchLoops = makeloops(kSouth0c + kFar2 + kNear1 + kNearFar1 + kNear0 + kSou
 
 func BenchmarkInit(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		NewPolygonFromLoops(&benchLoops)
+		NewPolygonFromLoops(benchLoops)
 	}
 }
 
@@ -669,7 +669,7 @@ func concentricLoops(center Point, numLoops, numVertsPerLoop int, poly *Polygon)
 		}
 		loops = append(loops, NewLoopFromPath(vertices))
 	}
-	poly.Init(&loops)
+	poly.Init(loops)
 }
 
 func unionOfPolygons(b *testing.B, numVertsPerLoop int, offset float64) {

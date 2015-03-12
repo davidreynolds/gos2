@@ -113,14 +113,14 @@ func (c Cell) CapBound() Cap {
 	return s2cap
 }
 
-func (c Cell) Subdivide(children *[4]Cell) bool {
+func (c Cell) Subdivide(children *[]Cell) bool {
 	if c.IsLeaf() {
 		return false
 	}
-
 	ci := c.id.ChildBegin()
-	for pos := 0; pos < 4; pos, ci = pos+1, ci.Next() {
-		children[pos] = CellFromCellID(ci)
+	for i := 0; i < 4; i++ {
+		*children = append(*children, CellFromCellID(ci))
+		ci = ci.Next()
 	}
 	return true
 }
