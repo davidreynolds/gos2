@@ -88,7 +88,7 @@ func NewLoopFromCell(cell Cell) *Loop {
 }
 
 func (l *Loop) IsValid() bool {
-	// Loops must have 3 vertices.
+	// Loops must have at least 3 vertices.
 	if len(l.vertices) < 3 {
 		return false
 	}

@@ -49,14 +49,16 @@ func (m *CellEdgeMultimap) Insert(ce CellEdge) {
 
 func (m *CellEdgeMultimap) LowerBound(id CellID) int {
 	idx := sort.Search(m.Len(), func(k int) bool {
-		return uint64(m.items[k].cellId) >= uint64(id)
+		return m.items[k].cellId >= id
 	})
 	return idx
 }
 
 func (m *CellEdgeMultimap) UpperBound(id CellID) int {
-	// XXX: Is this a good way to get the upper bound?
-	return m.LowerBound(id.Next())
+	idx := sort.Search(m.Len(), func(k int) bool {
+		return m.items[k].cellId > id
+	})
+	return idx
 }
 
 type EdgeIndexer interface {
