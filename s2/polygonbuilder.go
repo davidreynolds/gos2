@@ -150,6 +150,18 @@ func (idx *PointIndex) Insert(p Point) {
 	sort.Sort(byIDPoint(idx.map_))
 }
 
+func (idx *PointIndex) InsertUnsorted(p Point) {
+	ids := []CellID{}
+	cellIDFromPoint(p).AppendVertexNeighbors(idx.level, &ids)
+	for i := len(ids) - 1; i >= 0; i-- {
+		idx.map_ = append(idx.map_, CellIDPoint{ids[i], p})
+	}
+}
+
+func (idx *PointIndex) SortByIDPoint() {
+	sort.Sort(byIDPoint(idx.map_))
+}
+
 func (idx *PointIndex) Erase(p Point) {
 	ids := []CellID{}
 	cellIDFromPoint(p).AppendVertexNeighbors(idx.level, &ids)
@@ -323,8 +335,9 @@ func (b *PolygonBuilder) BuildMergeMap(index *PointIndex) MergeMap {
 
 	// Build a spatial index containing all the distinct vertices
 	for p := range vertices {
-		index.Insert(p)
+		index.InsertUnsorted(p)
 	}
+	index.SortByIDPoint()
 
 	// Next we loop through all the vertices and attempt to grow a maximal
 	// mergeable group starting from each vertex
